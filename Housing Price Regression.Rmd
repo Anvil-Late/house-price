@@ -4,7 +4,7 @@ author: "Anvil"
 date: "14/09/2020"
 output: 
    html_document:
-      code_folding: hide
+      code_folding: show
       keep_md : true
 ---
 
@@ -28,6 +28,8 @@ library(ggplot2)
 library(dplyr)
 library(data.table)
 library(lubridate)
+library(knitr)
+library(kableExtra)
 ```
 
 # Loading the data
@@ -63,4 +65,113 @@ train <- read.csv(trainfile)
 ```
 
 # Exploratory data analysis
+
+It's now time to take a look at our data. The first thing we'll do is to convert both train and test sets to data tables to make future modifications easier. 
+
+```{r}
+train <- data.table(train)
+test <- data.table(test)
+```
+
+
+
+## Variables' class
+
+Let's have a look at our training set, and especially the class of its variables :
+```{r}
+train[, lapply(.SD, class), .SDcols = names(train[,1:14])]
+```
+We have a lot of character variables; the [data description file provided by kaggle](https://www.kaggle.com/c/house-prices-advanced-regression-techniques/data) indicates that these are classification variables with only a few possible values. They should therefore be converted to factors.
+
+```{r}
+to_factor <- names(which(sapply(train, class) == "character"))
+```
+
+Similarly, while some of the integer or numeric vectors indicate a truly numeric value, such as *LotArea* which indicates the lot size in square feet, others are - again - classification variables, such as *MSSubClass*, which identifies the type of dwelling involved in the sale, with, for instance, 20 signifying "1-STORY 1946 & NEWER ALL STYLES" (see data description file). 
+We have 3 such variables : *MSSubClass*, *OverallQual*, and *OverallCond*.
+
+These will also have to be converted to factor.
+
+
+```{r}
+to_factor <- c(to_factor,"MSSubClass", "OverallQual", "OverallCond")
+
+```
+
+
+
+## Dates
+
+We have 4 variables that contain date information :
+
+- YearBuilt: Original construction date
+- YearRemodAdd: Remodel date (same as construction date if no remodeling or additions)
+- GarageYrBlt: Year garage was built
+- YrSold: Year Sold
+
+Intuitively, it can be said that these variables, especially the construction date, can have an impact on the final price, which seems to be confirmed in this plot :
+
+```{r}
+qplot(train$YearBuilt, train$SalePrice) + labs(x = "Construction Date",
+                                               y = "House Sale Price") +
+   ggtitle("House sale price by year of construction")
+
+```
+
+Looking at the range of dates and their linear relationship with the sale price, we'll keep the dates variables as integer.
+
+However, the *GarageYrBlt* variable is problematic since it is set to NA when there is no garage, and can cause trouble when we preprocess missing values (we'll get to NAs in general in a minute). 
+
+Therefore, we'll either remove this variable if it contributes little to the data set or convert it to factor with a "none" level if it does.
+
+We'll check if this variable is highly correlated to others. Let's see the correlation percentage between *YearBuilt* and *GarageYrBlt* :
+
+```{r}
+cor(train$YearBuilt, train$GarageYrBlt, use = "complete")
+```
+Therefore, we can say that this variable contributes little to the dataset, and we can safely remove it.
+
+## Missing values (NAs) 
+
+Before we convert these variables to factor and go forward into the analysis, we need to first have a look at the proportion of NAs in the dataset.
+
+Let's first see which columns have NAs :
+
+```{r}
+temp_na <- as.numeric(train[, lapply(.SD, function(y){sum(is.na(y))})])
+names(temp_na) <- names(train)
+temp_na <- temp_na[temp_na > 0]
+print(temp_na)
+```
+
+We have about 7000 NAs, which is around 6% of our data. However, the description file indicates that for some variables, NA doesn't mean a missing value but an absence of feature. For instance, for the *Alley* column, NA signifiest that there is no alley access.
+
+Therefore, in some cases, NAs contain valuable information, and since we might do some pre-processing to convert missing values later on and we don't want to change this type of NA, we'll change them to a "None" level for factor variables.
+
+The factor variables concerned by this are *Alley*, *BsmtQual*, *BsmtCond*, *BsmtExposure*, *BsmtFinType1*, *BsmtFinType2*, *FireplaceQu*, *GarageType*, *GarageFinish*, *GarageQual*, *GarageCond*, *PoolQC*, *Fence*, and *MiscFeature*. As seen previously, we ignore *GarageYrBlt* since we will remove this variable
+
+
+```{r}
+temp_na2 <- temp_na[temp_na> 10][-c(1,10)]
+
+print(temp_na2)
+```
+
+## Data cleaning
+
+We will now take all that have been said so far to clean the data. We will also remove the first column since it is the ID variable for the various houses in our dataset.
+
+```{r}
+# Step 1 : convert NAs 
+for (j in names(temp_na2)){
+   set(train,which(is.na(train[[j]])),j,"None")
+}
+
+# Step 2 :  convert to factor
+
+train[, (to_factor) := lapply(.SD, as.factor), .SDcols = to_factor]
+
+# step 3 : Delete ID and GarageYrBuilt variables
+train <- train[, -c(1,60)]
+```
 
