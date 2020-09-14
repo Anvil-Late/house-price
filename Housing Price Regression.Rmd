@@ -1,0 +1,66 @@
+---
+title: "Housing Price Regression"
+author: "Anvil"
+date: "14/09/2020"
+output: 
+   html_document:
+      code_folding: hide
+      keep_md : true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = F, message = F)
+```
+
+# Summary
+
+# Loading packages
+
+Throughout this project, we will use :
+
+- ggplot2
+- dplyr
+- data.table
+- lubridate
+
+```{r}
+library(ggplot2)
+library(dplyr)
+library(data.table)
+library(lubridate)
+```
+
+# Loading the data
+
+As a personal habit, I automate the downloading and loading processes. The original data can be found on [this Kaggle page](https://www.kaggle.com/c/house-prices-advanced-regression-techniques/overview)
+
+```{r}
+
+# This will create a "data" folder in the current directory and store the data in it
+
+if (!file.exists("data")){
+   dir.create("data")
+}
+
+trainurl <- "https://storage.googleapis.com/kagglesdsdata/competitions/5407/868283/train.csv?GoogleAccessId=web-data@kaggle-161607.iam.gserviceaccount.com&Expires=1600334118&Signature=m8A295cdrmCFr1Qo8tweV0krSrzo%2Flis%2B51piiEOmc%2BKUYKQzUshHC2uG00JWzt03KkMDFiz0FpHO95VLzEQFddzD%2B%2Byi43nEGe0XfEXYP7wAKUrEPGTDY0kRtf3Y7n50JDmhp0WGnxzVK47FH1xbuJFacvWhnpAwO78fhVQH6x0HiNsfz8U2rYtkHefSaBy08Dnztggx%2BWEd0Q9vEA4mtqRuT%2Btd4%2FNra2n0BDdZUZ4BDQGaxdXU6aSDoP9XYMv6vbB4%2FFH13YCxbnUr3JuS85g%2FTxM%2Ba5pkmGq1rnijPXHqwRA9WKK%2BFSVhuZ%2Fv3N65u9vUCsnY2kAox26vnd3HQ%3D%3D&response-content-disposition=attachment%3B+filename%3Dtrain.csv"
+
+trainfile <- "./data/train.csv"
+
+testurl <- "https://storage.googleapis.com/kagglesdsdata/competitions/5407/868283/test.csv?GoogleAccessId=web-data@kaggle-161607.iam.gserviceaccount.com&Expires=1600334123&Signature=RgHIdDwVbnPVzd34JSDORiVnsqzsL%2B7OCr%2BQHKjNprCjj58ipSaQLwDKWo73vDLK9hEcRN6kqYMn3%2FVvnO9zX5HY5H%2FCXz6TUoq9iPkA8qLpwPqIv32O96aHb9of6%2BKX%2FLbw1r%2FQKiZOc%2FmIVe13zB7qGcjZaREDJH9v2dBbAIh4SBrc09vgMEzvJS5XqBcw3HuQHmPDfCsboYMFLTH%2F7uV5PPuVvB%2Fr%2BvsDZsR46OOz1gdTKdS1qYcjfa2w%2FJNYpKJ2uAeSAjpulyAKSSyf3FxJQS0EF%2BqqWRrtWE8X%2FIEAZlRKosWHIdLy%2FENyjX0d3Ltpylkd9neTPebQXjj6Yw%3D%3D&response-content-disposition=attachment%3B+filename%3Dtest.csv"
+
+testfile <- "./data/test.csv"
+
+if (!file.exists(trainfile)){
+   download.file(trainurl, trainfile, method = "curl")
+}
+
+if (!file.exists(testfile)){
+   download.file(testurl, testfile, method = "curl")
+}
+
+test <- read.csv(testfile)
+train <- read.csv(trainfile)
+```
+
+# Exploratory data analysis
+
