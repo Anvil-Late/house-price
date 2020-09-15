@@ -186,8 +186,49 @@ train[, (to_factor) := lapply(.SD, as.factor), .SDcols = to_factor]
 train <- train[, -c(1,60)]
 ```
 
+## Correlation
+
+Since there are 81 total variables, of which 33 are numeric, it might be useful to look for redundancies between variables.
+
+In other words, we would like to se a correlation plot of numeric variables and remove those that are heavily correlated to others :
 
 ```{r}
-#train_cor <- ContCoef(train)
-#corrplot(train_cor)
+integer_cols <- sapply(train, function(y){class(y) == "integer"})
+integer_train <- train[, .SD, .SDcols = integer_cols]
+integer_train <- integer_train[, 1:32] # remove "SalePrice column
+
+train_cor <- cor(integer_train, use = "complete")
+corrplot2(train_cor, method = "square", type = "lower", 
+         title = "Correlation plot between numeric variables",
+         tl.col = "black", tl.cex = 0.6, order = "hclust",
+         mar = c(0,0,2,0))
 ```
+We find that there are some variables that have strong correlations with each other :
+
+- GarageCars and GarageArea
+- 1stFlrSF (First Floor square feet) and TotalBsmtSF (Total square feet of basement area)
+- TotRmsAbvGrd (Total rooms above grade) and GrLivArea (Above grade living area square feet)
+
+Below are their correlation coefficients :
+
+```{r}
+cor(train$GarageCars, train$GarageArea)
+cor(train$X1stFlrSF, train$TotalBsmtSF)
+cor(train$TotRmsAbvGrd, train$GrLivArea)
+```
+
+Moreover, GarageCars, GrLivArea and TotalBsmtSF are heavily correlated to other variables. We will therefore remove them from the dataset.
+
+```{r}
+train <- train[, -c(38, 46, 60)]
+```
+
+# Preprocessing
+
+Now that we looked at our data, cleaned it and selected the variables that we will use, it is time to do some pre-processing. Here, we will fill in the NAs. Given the low proportion of NAs, the dataset's size and the general similarities between rows and variables, we will use the KNN-Impute algorithm.
+
+```{r}
+preObj <- preProcess(train[, -76], method = "knnImpute")
+proc_train <- data.table(cbind(predict(preObj, train[, -76]), train[, 76]))
+```
+
