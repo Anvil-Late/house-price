@@ -21,15 +21,18 @@ Throughout this project, we will use :
 - ggplot2
 - dplyr
 - data.table
-- lubridate
+- corrplot
+- caret
+- randomForest
 
 ```{r}
 library(ggplot2)
 library(dplyr)
 library(data.table)
-library(lubridate)
-library(knitr)
-library(kableExtra)
+library(corrplot)
+library(caret)
+library(randomForest)
+
 ```
 
 # Loading the data
@@ -73,7 +76,15 @@ train <- data.table(train)
 test <- data.table(test)
 ```
 
+## Data Partition
 
+We'll split our training set into a sub-train and sub-test set with a 70-30 partition :
+
+```{r}
+splitter <- createDataPartition(y=train$SalePrice, p=0.7, list = F)
+subtest <- train[-splitter, ]
+train <- train[splitter, ]
+```
 
 ## Variables' class
 
@@ -144,7 +155,7 @@ temp_na <- temp_na[temp_na > 0]
 print(temp_na)
 ```
 
-We have about 7000 NAs, which is around 6% of our data. However, the description file indicates that for some variables, NA doesn't mean a missing value but an absence of feature. For instance, for the *Alley* column, NA signifiest that there is no alley access.
+We have about 4900 NAs, which is around 6% of our data. However, the description file indicates that for some variables, NA doesn't mean a missing value but an absence of feature. For instance, for the *Alley* column, NA signifiest that there is no alley access.
 
 Therefore, in some cases, NAs contain valuable information, and since we might do some pre-processing to convert missing values later on and we don't want to change this type of NA, we'll change them to a "None" level for factor variables.
 
@@ -175,3 +186,8 @@ train[, (to_factor) := lapply(.SD, as.factor), .SDcols = to_factor]
 train <- train[, -c(1,60)]
 ```
 
+
+```{r}
+#train_cor <- ContCoef(train)
+#corrplot(train_cor)
+```
