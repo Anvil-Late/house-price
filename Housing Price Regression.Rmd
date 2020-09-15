@@ -232,3 +232,20 @@ preObj <- preProcess(train[, -76], method = "knnImpute")
 proc_train <- data.table(cbind(predict(preObj, train[, -76]), train[, 76]))
 ```
 
+KNN-Imputing removed the majority of our NAs, but there might be some that remain in our factor variables, for which our algorithm could do nothing for. Let's see if there are some that remain :
+
+```{r}
+which(is.na(proc_train), arr.ind = T)
+```
+
+we have 5 rows that contain NAs. We will remove them from the set
+
+```{r}
+proc_train <- proc_train[-c(376, 463, 690, 692, 970), ]
+```
+
+# Model Building
+
+```{r}
+system.time(Systmodfit_rf <- caret::train(SalePrice ~ ., method = "rf", data = proc_train))
+```
