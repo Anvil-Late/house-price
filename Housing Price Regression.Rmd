@@ -772,7 +772,7 @@ for (j in names(temp_na2)){
 train_original[, (to_factor) := lapply(.SD, as.factor), .SDcols = to_factor]
 train_original <- train_original[, -c(1,60)]
 train_original <- train_original[, -c(38, 46, 60)]
-level_list <- data.frame()
+level_list <- list()
 for (j in names(train_original)){
    if (class(train_original[[j]]) == "factor"){
       level_list <- c(level_list, list(levels(train_original[[j]])))
@@ -788,6 +788,14 @@ for (j in 1:dim(train)[2]){
       levels(train[[names(train)[j]]]) <- level_list[[j]]
    }
 }
+
+for (j in 1:dim(proc_train)[2]){
+   if (class(proc_train[[names(proc_train)[j]]]) == "factor"){
+      levels(proc_train[[names(proc_train)[j]]]) <- level_list[[j]]
+   }
+}
+
+
 ```
 
 # Model Building
@@ -797,12 +805,13 @@ If it's lacking, we'll try using a combination of models.
 
 ```{r, eval=F}
 modfit_rf <- caret::train(SalePrice ~ ., method = "rf", data = proc_train)
+modfit_boost <- caret::train(SalePrice ~ ., method = "gbm", data = proc_train)
+
 ```
 
 ```{r, echo=F}
 load("./data/modfit_rf.RData")
-modfit_rf <- Systmodfit_rf
-rm(Systmodfit_rf)
+
 ```
 
 We'll preprocess the sub-test set in the same way we did the train set :
@@ -820,11 +829,24 @@ subtest <- subtest[, -c(38, 46, 60)]
 
 proc_subtest <- data.table(predict(preObj, subtest[, -76]))
 
+for (j in 1:dim(proc_subtest)[2]){
+   if (class(proc_subtest[[names(proc_subtest)[j]]]) == "factor"){
+      levels(proc_subtest[[names(proc_subtest)[j]]]) <- level_list[[j]]
+   }
+}
+
 ```
 
 And now we predict :
 
 ```{r}
 rf_predict <- predict(modfit_rf, proc_subtest)
+```
+
+```{r}
+comparison <- data.table(results = subtest$SalePrice, predicted = rf_predict)
+RMSE(comparison$results, comparison$predicted, na.rm = T)
+mean(comparison$results)
+qplot(results, predicted, data = comparison) + geom_abline(slope = 1, intercept = 0, colour = "red")
 ```
 
