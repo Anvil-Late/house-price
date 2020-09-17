@@ -874,8 +874,12 @@ numer_train[ , Neighborhood := proc_train$Neighborhood]
 numer_train[ , SalePrice := proc_train$SalePrice]
 ```
 
-```{r}
+```{r, eval=F}
 modfit_glm <- train(SalePrice ~ ., method = "glm", data = numer_train)
+```
+
+```{r, echo=F}
+load(file = "./data/modfit_glm.RData")
 ```
 
 Preprocessing the subtest set :
@@ -900,14 +904,46 @@ qplot(results, predicted_glm, data = comparison) + geom_abline(slope = 1, interc
 
 ```{r}
 exp_numtrain <- filter(numer_train, SalePrice > 300000)
+```
+
+```{r, eval=F}
 modfit_expglm <- train(SalePrice ~ ., method = "glm", data = exp_numtrain)
 ```
 
-```{r}
+```{r, echo=F}
+load(file = "./data/modfit_expglm.RData")
+```
 
+Filter for proc_train saleprice > 300k
+
+```{r}
+exp_proctrain <- filter(proc_train, SalePrice > 300000)
+```
+
+New modfits for saleprice > 300k
+
+```{r, eval=F}
+modfit_exprf <- randomForest(SalePrice ~ ., data = exp_proctrain)
+modfit_expboost <- gbm(SalePrice ~ ., data = exp_proctrain)
+```
+```{r,echo=F}
+load(file = "./data/modfit_exprf.RData")
+load(file = "./data/modfit_expboost.RData")
+```
+
+```{r}
+predicted_exprf <- predict(modfit_exprf, proc_subtest)
+predicted_expboost <- predict(modfit_expboost, proc_subtest)
 predicted_expglm <- predict(modfit_expglm, numer_subtest)
+
+comparison[, predicted_exprf := predicted_exprf]
+comparison[, predicted_expboost := predicted_expboost]
 comparison[, predicted_expglm := predicted_expglm]
+RMSE(comparison$results, comparison$predicted_exprf, na.rm = T)
+RMSE(comparison$results, comparison$predicted_expboost, na.rm = T)
 RMSE(comparison$results, comparison$predicted_expglm, na.rm = T)
+qplot(results, predicted_exprf, data = comparison) + geom_abline(slope = 1, intercept = 0, colour = "red")
+qplot(results, predicted_expboost, data = comparison) + geom_abline(slope = 1, intercept = 0, colour = "red")
 qplot(results, predicted_expglm, data = comparison) + geom_abline(slope = 1, intercept = 0, colour = "red")
 ```
 
@@ -926,7 +962,11 @@ for (i in 1:dim(comparison)[1]){
                   # Kind of messy way to creat a mean, but mean() with an NA
                   # returns a NaN even with na.rm = T
    }else{
-      pred <- c(pred, comparison$predicted_expglm[i])
+      pred <- c(pred, sum(comparison$predicted_exprf[i], comparison$predicted_expboost[i], 
+                    comparison$predicted_expglm[i], na.rm = T)/
+                   sum(3-sum(is.na(c(comparison$predicted_exprf[i], 
+                                   comparison$predicted_expboost[i], 
+                                   comparison$predicted_expglm[i])))))
    }
 }
 
@@ -935,6 +975,7 @@ comparison[, prediction := pred]
 RMSE(comparison$results, comparison$prediction, na.rm = T)
 qplot(results, prediction, data = comparison) + geom_abline(slope = 1, intercept = 0, colour = "red")
 ```
+Without outlier :
 
 ```{r}
 temp <- copy(comparison)
