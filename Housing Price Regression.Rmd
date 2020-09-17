@@ -32,6 +32,7 @@ library(data.table)
 library(corrplot)
 library(caret)
 library(randomForest)
+library(gbm)
 
 ```
 
@@ -804,14 +805,14 @@ For now, we will build a model using the random forest algorithm, and see how we
 If it's lacking, we'll try using a combination of models.
 
 ```{r, eval=F}
-modfit_rf <- caret::train(SalePrice ~ ., method = "rf", data = proc_train)
-modfit_boost <- caret::train(SalePrice ~ ., method = "gbm", data = proc_train)
+modfit_rf <- randomForest(SalePrice ~ ., data = proc_train)
+modfit_boost <- gbm(SalePrice ~ ., data = proc_train)
 
 ```
 
 ```{r, echo=F}
 load("./data/modfit_rf.RData")
-
+load("./data/modfit_boost.RData")
 ```
 
 We'll preprocess the sub-test set in the same way we did the train set :
@@ -841,12 +842,106 @@ And now we predict :
 
 ```{r}
 rf_predict <- predict(modfit_rf, proc_subtest)
+boost_predict <- predict(modfit_boost, proc_subtest)
 ```
 
 ```{r}
-comparison <- data.table(results = subtest$SalePrice, predicted = rf_predict)
-RMSE(comparison$results, comparison$predicted, na.rm = T)
+comparison <- data.table(results = subtest$SalePrice, predicted_rf = rf_predict,
+                         predicted_boost = boost_predict)
+RMSE(comparison$results, comparison$predicted_rf, na.rm = T)
+RMSE(comparison$results, comparison$predicted_boost, na.rm = T)
 mean(comparison$results)
-qplot(results, predicted, data = comparison) + geom_abline(slope = 1, intercept = 0, colour = "red")
+qplot(results, predicted_rf, data = comparison) + geom_abline(slope = 1, intercept = 0, colour = "red")
+qplot(results, predicted_boost, data = comparison) + geom_abline(slope = 1, intercept = 0, colour = "red")
+
 ```
 
+```{r}
+numer_train <- proc_train %>% select(which(sapply(.,is.numeric)))
+
+numer_train <- select(numer_train, -SalePrice)
+svd1 <- svd(scale(numer_train))
+qplot(1:dim(numer_train)[2], svd1$d^2 / sum(svd1$d^2)) + 
+   labs(x = "columns", y = "Proportion of variance explained") +
+   ggtitle("Proportion of variance explained per variable")
+```
+
+```{r}
+preproc <- preProcess(numer_train, method = "pca", pcaComp = 20) 
+
+numer_train <- data.table(predict(preproc, numer_train))
+numer_train[ , Neighborhood := proc_train$Neighborhood] 
+numer_train[ , SalePrice := proc_train$SalePrice]
+```
+
+```{r}
+modfit_glm <- train(SalePrice ~ ., method = "glm", data = numer_train)
+```
+
+Preprocessing the subtest set :
+
+```{r}
+numer_subtest <- proc_subtest %>% select(which(sapply(.,is.numeric)))
+numer_subtest <- data.table(predict(preproc, numer_subtest))
+numer_subtest[ , Neighborhood := proc_subtest$Neighborhood] 
+```
+
+Prediction :
+
+```{r}
+predicted_glm <- predict(modfit_glm, numer_subtest)
+```
+
+```{r}
+comparison[, predicted_glm := predicted_glm]
+RMSE(comparison$results, comparison$predicted_glm, na.rm = T)
+qplot(results, predicted_glm, data = comparison) + geom_abline(slope = 1, intercept = 0, colour = "red")
+```
+
+```{r}
+exp_numtrain <- filter(numer_train, SalePrice > 300000)
+modfit_expglm <- train(SalePrice ~ ., method = "glm", data = exp_numtrain)
+```
+
+```{r}
+
+predicted_expglm <- predict(modfit_expglm, numer_subtest)
+comparison[, predicted_expglm := predicted_expglm]
+RMSE(comparison$results, comparison$predicted_expglm, na.rm = T)
+qplot(results, predicted_expglm, data = comparison) + geom_abline(slope = 1, intercept = 0, colour = "red")
+```
+
+combined :
+
+```{r}
+
+pred <- numeric()
+for (i in 1:dim(comparison)[1]){
+   if (comparison$results[i] <= 300000){
+      pred <- c(pred, sum(comparison$predicted_rf[i], comparison$predicted_boost[i], 
+                    comparison$predicted_glm[i], na.rm = T)/
+                   sum(3-sum(is.na(c(comparison$predicted_rf[i], 
+                                   comparison$predicted_boost[i], 
+                                   comparison$predicted_glm[i])))))
+                  # Kind of messy way to creat a mean, but mean() with an NA
+                  # returns a NaN even with na.rm = T
+   }else{
+      pred <- c(pred, comparison$predicted_expglm[i])
+   }
+}
+
+comparison[, prediction := pred]
+
+RMSE(comparison$results, comparison$prediction, na.rm = T)
+qplot(results, prediction, data = comparison) + geom_abline(slope = 1, intercept = 0, colour = "red")
+```
+
+```{r}
+temp <- copy(comparison)
+temp[, delta := abs(results - prediction)]
+
+rem_row <- which(temp$delta >= quantile(temp$delta)[5])
+temp <- temp[-rem_row, ]
+RMSE(temp$results, temp$prediction, na.rm = T)
+qplot(results, prediction, data = temp) + geom_abline(slope = 1, intercept = 0, colour = "red")
+```
