@@ -79,15 +79,45 @@ test <- data.table(test)
 
 ## Data Partition
 
+Although Kaggle provides us with a test set, we might want to do some testing and cross validation ourselves before submitting our model to see if we have a good fit.
 
-
-We'll split our training set into a sub-train and sub-test set with a 70-30 partition :
+Therefore, we'll split our training set into a sub-train and sub-test set with a 70-30 partition :
 
 ```{r}
 set.seed(1234)
 splitter <- createDataPartition(y=train$SalePrice, p=0.7, list = F)
 subtest <- train[-splitter, ]
 train <- train[splitter, ]
+```
+
+Let's have a look at the dimensions of our training set :
+
+```{r}
+dim(train)
+```
+
+We have a set that has a lot of variables, 81 in total, but is overall quite small, with only 1024 observations.
+Let's have a look at the variables we have here :
+
+```{r}
+names(train)
+```
+
+## Exploring the response variable
+
+Our response variable here that we want to predict is *SalePrice*. The first exploratory data analysis we want here is to have a look at its distribution :
+
+```{r}
+ggplot(data = train, aes(x = SalePrice)) + geom_histogram(fill="blue") + stat_function(fun = dnorm, args = list(mean = m, sd = s))
+```
+We can see that *SalePrice* has a skewed distribution. We can highlight that even more with a density plot (in blue) compared to a normal distribution (in red) :
+
+```{r}
+
+ggplot(data = train, aes(x = SalePrice)) + geom_density(fill="blue") + 
+   stat_function(fun = dnorm, 
+                 args = list(mean = mean(train$SalePrice), sd = sd(train$SalePrice)), 
+                 colour = "red")
 ```
 
 ## Variables' class
