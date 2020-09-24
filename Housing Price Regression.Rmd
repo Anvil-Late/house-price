@@ -143,13 +143,6 @@ We have 3 such variables : *MSSubClass*, *OverallQual*, and *OverallCond*.
 These will also have to be converted to factor. However, for now it suits us to keep them as numeric, so we'll convert them later on
 
 
-```{r}
-#to_factor <- c(to_factor,"MSSubClass", "OverallQual", "OverallCond")
-
-```
-
-
-
 ## Dates
 
 We have 4 variables that contain date information :
@@ -235,7 +228,7 @@ Of our 79 remaining variables, 36 are numeric :
 sum(sapply(train, function(y){class(y) == "integer"}))
 ```
 
-Now, we want to see a correlation plot. This will allow us to see which variables are the most correlated to *SalePrice*, and also which ones are highly correlated between each other.
+Now, we want to see a correlation plot. This will allow us to see which variables are the most correlated to *SalePrice*, and also which ones are highly correlated between each other. Ideally, we want to maximise the number of numeric variables we can use, which explains why we didn't convert some of them to factor yet.
 
 
 ```{r, echo=F}
@@ -771,6 +764,45 @@ corrplot2(train_cor, method = "square", type = "lower",
          tl.col = "black", tl.cex = 0.6, 
          mar = c(0,0,2,0))
 ```
+
+Now that the corrplot is made, we can convert the "false numeric" variables to factor :
+
+```{r}
+to_factor <- c(to_factor,"MSSubClass", "OverallQual", "OverallCond")
+train[, (to_factor) := lapply(.SD, as.factor), .SDcols = to_factor]
+
+```
+
+### Correlation with response variable 
+
+The three variables with the highest correlation with *SalePrice* are *OverallQual*, *GrLivArea* and *TotalBsmtSF*.
+
+Let's have a look at their relationship :
+
+#### Overall Quality
+
+```{r}
+ggplot(data = train, aes(x = OverallQual, y = SalePrice)) + geom_boxplot()
+```
+#### Above grade (ground) living area square feet
+
+```{r}
+qplot(GrLivArea, SalePrice, data = train) + geom_smooth(method = "lm", se = F)
+```
+
+#### Total square feet of basement area
+
+```{r}
+qplot(TotalBsmtSF, SalePrice, data = train) + geom_smooth(method = "lm", se = F)
+```
+
+
+#### First inferences
+
+
+
+### Correlation between predictors
+
 We find that there are some variables that have strong correlations with each other :
 
 - GarageCars and GarageArea
@@ -785,9 +817,10 @@ cor(train$X1stFlrSF, train$TotalBsmtSF)
 cor(train$TotRmsAbvGrd, train$GrLivArea)
 ```
 
-Moreover, GarageCars, GrLivArea and TotalBsmtSF are heavily correlated to other variables. We will therefore remove them from the dataset.
+Moreover, GarageCars, GrLivArea and TotalBsmtSF are heavily correlated to other variables. We would therefore tend to remove them from the dataset. However, they are also heavily related to the response variable ; we might risk losing accuracy if we remove them. Instead, we will combine all surface variable into a single "total area" column and use that instead of all the others
 
 ```{r}
+train[, HouseArea := TotalBsmtSF + ]
 train <- train[, -c(38, 46, 60)]
 ```
 
