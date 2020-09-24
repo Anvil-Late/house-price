@@ -831,9 +831,108 @@ Moreover, GarageCars, GrLivArea and TotalBsmtSF are heavily correlated to other 
 Therefore, we will need to do some feature engineering at some point to combine redundant variables that are highly correlated to each other.
 
 
-# Preprocessing
+# Back to NAs : imputing values
 
-Now that we looked at our data, cleaned it and selected the variables that we will use, it is time to do some pre-processing. Here, we will fill in the NAs. Given the low proportion of NAs, the dataset's size and the general similarities between rows and variables, we will use the KNN-Impute algorithm.
+We previously took a look at our dataset's missing values and focused on those that meant "none" rather that actual NAs.
+
+Now, we will work on the latter and see how we can input values to them :
+
+```{r}
+temp_na <- as.numeric(train[, lapply(.SD, function(y){sum(is.na(y))})])
+names(temp_na) <- names(train)
+temp_na <- temp_na[temp_na > 0]
+print(temp_na)
+```
+
+Except for *LotFrontage*, most variables have a low number of NAs, which are located in the following observations :
+
+```{r}
+which(is.na(train$MasVnrType))
+which(is.na(train$MasVnrArea))
+which(is.na(train$Electrical))
+```
+By removing 5 rows, we can make it so that we only have to focus on the *LotFrontage* variable, so that's what we'll do :
+
+```{r}
+row_remove <- unique(c(which(is.na(train$MasVnrType)), 
+                       which(is.na(train$MasVnrArea)),
+                       which(is.na(train$Electrical))))
+train <- train[-row_remove, ]
+```
+
+## LotFrontage 
+
+The *LotFrontage* variable refers to the linear feet of street connected to a property. 
+
+For each missing value, we'll input the mean of the *LotFrontage* value for the associated neighborhood. This means we assume that, for every neighborhood, the *LotFrontage* values are rather condensed around a mean value. 
+
+Actually, this can be confirmed by looking at this plot :
+
+```{r}
+ggplot(data = train, aes(x = Neighborhood, y = LotFrontage)) + geom_boxplot() + 
+   theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1))
+```
+
+We'll create a data table with contains, for each neighborhood, the mean of its *LotFrontage*, and set the *Neighborhood* values as keys to call the associated mean value when needed :
+
+```{r}
+neig_lf_mean <- train %>% group_by(Neighborhood) %>% 
+   summarize(meanLF = mean(LotFrontage, na.rm = T)) %>%
+   mutate(meanLF = round(meanLF))
+
+neig_lf_mean <- data.table(neig_lf_mean)
+
+setkey(neig_lf_mean, Neighborhood)
+```
+
+Now, for each missing value of *LotFrontage*, we extract the associated *Neighborhood* value, call its *LotFrontage* mean thanks to our new data table, and input it to our train set :
+
+```{r}
+for (i in 1:nrow(train)){
+   if (is.na(train$LotFrontage[i])){
+      ngbr <- train$Neighborhood[i]
+      lf_mean <- neig_lf_mean[.(ngbr)]$meanLF # calling the mean with the key
+      train$LotFrontage[i] <- lf_mean
+   }
+}
+```
+
+## Checking NAs 
+
+Now, we should have no remaining missing value in our set :
+
+```{r}
+temp_na <- as.numeric(train[, lapply(.SD, function(y){sum(is.na(y))})])
+names(temp_na) <- names(train)
+temp_na <- temp_na[temp_na > 0]
+print(temp_na)
+```
+
+# Variable importance
+
+Correlation plots are a quick and efficient way to check the most important variables but can only be applied to numeric variables. To get a true indication of which variables are the most important, we have to take into account the categorical variables, and the easiest way to do that is to use the *importance* variable of a random forest model fit. 
+
+We previously said that random forest models would be a poor fit for this study, but that is only because it is not the best one to use when we have outliers. other than that, we can still trust the results such a model would give us concerning variable importance.
+
+Now we have to keep in mind here that we only want to have an indication of variable importance, so we will not do any pre-processing like we would do during our actual model building :
+
+```{r}
+set.seed(1234)
+modfit_rf <- randomForest(SalePrice ~ ., data = train, 
+                          ntree = 200, 
+                          importance = T)
+imp_rf <- importance(modfit_rf)
+imp_rf <- data.table(variables = row.names(imp_rf), inc_mse = imp_rf[, 1])
+imp_rf <- arrange(imp_rf, desc(inc_mse))
+
+ggplot(data = filter(imp_rf, inc_mse >= 5), 
+       aes(x = reorder(variables, -inc_mse), y = inc_mse, fill = inc_mse)) + 
+   geom_bar(stat = "identity") +
+   theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1),
+         legend.position = "none")+
+   labs(x = "Variables", 
+        y = "% increase in MSE if variable is shuffled")
+```
 
 ```{r}
 preObj <- preProcess(train[, -76], method = "knnImpute")
