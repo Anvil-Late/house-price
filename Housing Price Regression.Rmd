@@ -16,17 +16,12 @@ knitr::opts_chunk$set(echo = TRUE, warning = F, message = F)
 
 # Loading packages
 
-Throughout this project, we will use :
+Throughout this project, we will use the following packages:
 
-- ggplot2
-- dplyr
-- data.table
-- corrplot
-- caret
-- randomForest
 
 ```{r}
 library(ggplot2)
+library(ggrepel)
 library(dplyr)
 library(data.table)
 library(corrplot)
@@ -782,24 +777,36 @@ Let's have a look at their relationship :
 #### Overall Quality
 
 ```{r}
-ggplot(data = train, aes(x = OverallQual, y = SalePrice)) + geom_boxplot()
+ggplot(data = train, aes(x = OverallQual, y = SalePrice)) + geom_boxplot()+
+   geom_text_repel(
+      aes(label = ifelse((train$OverallQual == 10 & train$SalePrice < 300000), 
+                         rownames(train), '')
+          ))
 ```
 #### Above grade (ground) living area square feet
 
 ```{r}
-qplot(GrLivArea, SalePrice, data = train) + geom_smooth(method = "lm", se = F)
+qplot(GrLivArea, SalePrice, data = train) + geom_smooth(method = "lm", se = F)+
+   geom_text_repel(
+      aes(label = ifelse(train$GrLivArea[!is.na(train$SalePrice)]>4500, 
+                         rownames(train), '')
+          ))
 ```
 
 #### Total square feet of basement area
 
 ```{r}
-qplot(TotalBsmtSF, SalePrice, data = train) + geom_smooth(method = "lm", se = F)
+qplot(TotalBsmtSF, SalePrice, data = train) + geom_smooth(method = "lm", se = F)+
+   geom_text_repel(
+      aes(label = ifelse(train$TotalBsmtSF[!is.na(train$SalePrice)] > 3000, 
+                         rownames(train), '')
+          ))
 ```
 
 
 #### First inferences
 
-From only these 3 most important numeric variables, we can see that 
+From only these 3 most important numeric variables, we can see that there are 
 
 ### Correlation between predictors
 
