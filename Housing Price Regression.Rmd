@@ -90,6 +90,8 @@ subtest <- train[-splitter, ]
 train <- train[splitter, ]
 ```
 
+## Dimensions
+
 Let's have a look at the dimensions of our training set :
 
 ```{r}
@@ -110,7 +112,7 @@ Our response variable here that we want to predict is *SalePrice*. The first exp
 ```{r}
 ggplot(data = train, aes(x = SalePrice)) + geom_histogram(fill="blue") + stat_function(fun = dnorm, args = list(mean = m, sd = s))
 ```
-We can see that *SalePrice* has a skewed distribution. We can highlight that even more with a density plot (in blue) compared to a normal distribution (in red) :
+Here, we can see that *SalePrice* has a skewed distribution. We can highlight that even more with a density plot (in blue) compared to a normal distribution (in red) :
 
 ```{r}
 
@@ -120,9 +122,12 @@ ggplot(data = train, aes(x = SalePrice)) + geom_density(fill="blue") +
                  colour = "red")
 ```
 
+Generally, models will tend to predict normally distributed data. Therefore, our response being skewed means that any model we build will have a higher than normal inaccuracy unless we apply a transformation to make the data gaussian, such as the Box-Cox transformation. We will get to that during the pre-processing phase.
+
+
 ## Variables' class
 
-Let's have a look at our training set, and especially the class of its variables :
+Let's have a look at the variables' class :
 ```{r}
 train[, lapply(.SD, class), .SDcols = names(train[,1:14])]
 ```
@@ -135,11 +140,11 @@ to_factor <- names(which(sapply(train, class) == "character"))
 Similarly, while some of the integer or numeric vectors indicate a truly numeric value, such as *LotArea* which indicates the lot size in square feet, others are - again - classification variables, such as *MSSubClass*, which identifies the type of dwelling involved in the sale, with, for instance, 20 signifying "1-STORY 1946 & NEWER ALL STYLES" (see data description file). 
 We have 3 such variables : *MSSubClass*, *OverallQual*, and *OverallCond*.
 
-These will also have to be converted to factor.
+These will also have to be converted to factor. However, for now it suits us to keep them as numeric, so we'll convert them later on
 
 
 ```{r}
-to_factor <- c(to_factor,"MSSubClass", "OverallQual", "OverallCond")
+#to_factor <- c(to_factor,"MSSubClass", "OverallQual", "OverallCond")
 
 ```
 
@@ -163,7 +168,7 @@ qplot(train$YearBuilt, train$SalePrice) + labs(x = "Construction Date",
 
 ```
 
-Looking at the range of dates and their linear relationship with the sale price, we'll keep the dates variables as integer.
+Looking at the range of dates and their linear relationship with the sale price, we'll keep the dates variables as integer. 
 
 However, the *GarageYrBlt* variable is problematic since it is set to NA when there is no garage, and can cause trouble when we preprocess missing values (we'll get to NAs in general in a minute). 
 
@@ -189,7 +194,7 @@ temp_na <- temp_na[temp_na > 0]
 print(temp_na)
 ```
 
-We have about 4900 NAs, which is around 6% of our data. However, the description file indicates that for some variables, NA doesn't mean a missing value but an absence of feature. For instance, for the *Alley* column, NA signifiest that there is no alley access.
+We have `r sum(temp_na)` NAs, which is around `r round(100*sum(temp_na) / (dim(train)[1] * dim(train)[2]))`% of our data. However, the description file indicates that for some variables, NA doesn't mean a missing value but an absence of feature. For instance, for the *Alley* column, NA signifiest that there is no alley access.
 
 Therefore, in some cases, NAs contain valuable information, and since we might do some pre-processing to convert missing values later on and we don't want to change this type of NA, we'll change them to a "None" level for factor variables.
 
@@ -197,6 +202,8 @@ The factor variables concerned by this are *Alley*, *BsmtQual*, *BsmtCond*, *Bsm
 
 
 ```{r}
+# Factor variables for which NA means "none" are mostly those with more that 10NAs,
+# except LotFrontage. We remove GarageYrBlt, thus the -c(1, 10)
 temp_na2 <- temp_na[temp_na> 10][-c(1,10)]
 
 print(temp_na2)
@@ -222,9 +229,14 @@ train <- train[, -c(1,60)]
 
 ## Correlation
 
-Since there are 81 total variables, of which 33 are numeric, it might be useful to look for redundancies between variables.
+Of our 79 remaining variables, 36 are numeric :
 
-In other words, we would like to se a correlation plot of numeric variables and remove those that are heavily correlated to others :
+```{r}
+sum(sapply(train, function(y){class(y) == "integer"}))
+```
+
+Now, we want to see a correlation plot. This will allow us to see which variables are the most correlated to *SalePrice*, and also which ones are highly correlated between each other.
+
 
 ```{r, echo=F}
 # This is a modified version of corrplot that prevents labels to go out of frame
@@ -738,15 +750,25 @@ corrplot2 <-
 ```{r}
 integer_cols <- sapply(train, function(y){class(y) == "integer"})
 integer_train <- train[, .SD, .SDcols = integer_cols]
-integer_train <- integer_train[, 1:32] # remove "SalePrice column
 
+
+
+# Correlation matrix :
 train_cor <- cor(integer_train, use = "complete")
+
+# Isolate SalePrice column and sort variables from highest cor with SalePrice
+# to lowest cor
+train_cor_sort <- as.matrix(sort(train_cor[,'SalePrice'], decreasing = TRUE))
+
+# Keep cors > 0.5
+high_cors <- names(which(apply(train_cor_sort, 1, function(x) abs(x)>0.5)))
+train_cor <- train_cor[high_cors, high_cors]
 
 # Corrplot2 is a modified version of corrplot that prevents labels to go out of
 # the image's frame. If you're interested, it will be on my .Rmd file
 corrplot2(train_cor, method = "square", type = "lower", 
          title = "Correlation plot between numeric variables",
-         tl.col = "black", tl.cex = 0.6, order = "hclust",
+         tl.col = "black", tl.cex = 0.6, 
          mar = c(0,0,2,0))
 ```
 We find that there are some variables that have strong correlations with each other :
