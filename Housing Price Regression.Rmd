@@ -110,7 +110,7 @@ names(train)
 Our response variable here that we want to predict is *SalePrice*. The first exploratory data analysis we want here is to have a look at its distribution :
 
 ```{r}
-ggplot(data = train, aes(x = SalePrice)) + geom_histogram(fill="blue") + stat_function(fun = dnorm, args = list(mean = m, sd = s))
+ggplot(data = train, aes(x = SalePrice)) + geom_histogram(fill="blue")
 ```
 Here, we can see that *SalePrice* has a skewed distribution. We can highlight that even more with a density plot (in blue) compared to a normal distribution (in red) :
 
@@ -122,7 +122,7 @@ ggplot(data = train, aes(x = SalePrice)) + geom_density(fill="blue") +
                  colour = "red")
 ```
 
-Generally, models will tend to predict normally distributed data. Therefore, our response being skewed means that any model we build will have a higher than normal inaccuracy unless we apply a transformation to make the data gaussian, such as the Box-Cox transformation. We will get to that during the pre-processing phase.
+Generally, models will tend to predict normally distributed data. Therefore, our response being skewed means that any model we build will have a higher than normal inaccuracy unless we apply a transformation to make the data gaussian, such as predicting logs or a Box-Cox transformation. We will get to that during the pre-processing phase.
 
 
 ## Variables' class
@@ -799,7 +799,7 @@ qplot(TotalBsmtSF, SalePrice, data = train) + geom_smooth(method = "lm", se = F)
 
 #### First inferences
 
-
+From only these 3 most important numeric variables, we can see that 
 
 ### Correlation between predictors
 
