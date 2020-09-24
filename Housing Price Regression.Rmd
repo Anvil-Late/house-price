@@ -788,7 +788,7 @@ ggplot(data = train, aes(x = OverallQual, y = SalePrice)) + geom_boxplot()+
 ```{r}
 qplot(GrLivArea, SalePrice, data = train) + geom_smooth(method = "lm", se = F)+
    geom_text_repel(
-      aes(label = ifelse(train$GrLivArea[!is.na(train$SalePrice)]>4500, 
+      aes(label = ifelse((train$GrLivArea > 4500 | train$SalePrice > 550000), 
                          rownames(train), '')
           ))
 ```
@@ -798,7 +798,7 @@ qplot(GrLivArea, SalePrice, data = train) + geom_smooth(method = "lm", se = F)+
 ```{r}
 qplot(TotalBsmtSF, SalePrice, data = train) + geom_smooth(method = "lm", se = F)+
    geom_text_repel(
-      aes(label = ifelse(train$TotalBsmtSF[!is.na(train$SalePrice)] > 3000, 
+      aes(label = ifelse((train$TotalBsmtSF > 3000 | train$SalePrice > 550000), 
                          rownames(train), '')
           ))
 ```
@@ -806,7 +806,9 @@ qplot(TotalBsmtSF, SalePrice, data = train) + geom_smooth(method = "lm", se = F)
 
 #### First inferences
 
-From only these 3 most important numeric variables, we can see that there are 
+From only these 3 most important numeric variables, we can see that there are outliers that have either abnormally high prices or abnormally low prices. The row number of these outliers are displayed on the plots.
+
+Therefore, we might want to remove them from the training set and, overall, build models that are robust to outliers, which means that random forests should not be adapted to our case study.
 
 ### Correlation between predictors
 
@@ -824,12 +826,10 @@ cor(train$X1stFlrSF, train$TotalBsmtSF)
 cor(train$TotRmsAbvGrd, train$GrLivArea)
 ```
 
-Moreover, GarageCars, GrLivArea and TotalBsmtSF are heavily correlated to other variables. We would therefore tend to remove them from the dataset. However, they are also heavily related to the response variable ; we might risk losing accuracy if we remove them. Instead, we will combine all surface variable into a single "total area" column and use that instead of all the others
+Moreover, GarageCars, GrLivArea and TotalBsmtSF are heavily correlated to other variables. We would therefore tend to remove them from the dataset. However, they are also heavily related to the response variable ; we might risk losing accuracy if we remove them. 
 
-```{r}
-train[, HouseArea := TotalBsmtSF + ]
-train <- train[, -c(38, 46, 60)]
-```
+Therefore, we will need to do some feature engineering at some point to combine redundant variables that are highly correlated to each other.
+
 
 # Preprocessing
 
