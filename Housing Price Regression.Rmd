@@ -28,7 +28,8 @@ library(corrplot)
 library(caret)
 library(randomForest)
 library(gbm)
-
+library(gridExtra)
+library(scales)
 ```
 
 # Loading the data
@@ -983,6 +984,37 @@ train[, RemodAdd := ifelse(YearBuilt == YearRemodAdd, 0, 1)]
 train <- select(train, -c("YearBuilt", "YrSold", "YearRemodAdd"))
 ```
 
+### Quick focus on house age
+
+There is an interesting - but not so surprising - pattern that appears when plotting the relationship between *HouseAge* and *SalePrice* :
+
+```{r}
+g1 <- ggplot(data = train, aes(x = HouseAge, y = SalePrice)) + geom_point() +
+   ggtitle("Sale Price by House Age") + labs(x = "House Age", y = "Sale Price")
+g2 <- ggplot(data = filter(train, HouseAge > 1), aes(x = HouseAge, y = SalePrice))+ 
+   geom_point() + ggtitle("Sale Price for House Age > 1 year") + 
+   labs(x = "House Age", y = "Sale Price")
+grid.arrange(g1, g2)
+```
+
+The first plot takes all the houses into account whereas the second only take houses aged 2 years or more. The linear relationship is more visible in the second plot and we can see that new houses (1 year or less) follow a different pattern.
+
+That means that in addition to *HouseAge*, it might be relevant to add a *NewHouse* variable that is 1 if the house is new and 0 if not :
+
+```{r}
+train[, NewHouse := ifelse(HouseAge <= 1, 1, 0)]
+train[, NewHouse := factor(NewHouse)]
+```
+
+Let's see if we notice a significant difference between these two categories :
+
+```{r}
+ggplot(data = train, aes(x = NewHouse, y = SalePrice, fill = NewHouse)) + 
+   geom_boxplot() + theme(legend.position = "none")+
+   scale_y_continuous(labels = comma)
+```
+
+New houses seem to generally have a higher sale price.
 
 ## Neighborhood
 
