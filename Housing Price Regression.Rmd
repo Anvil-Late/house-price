@@ -1309,16 +1309,51 @@ We combine all our transformed data into one to create our final training set :
 model_train <- data.table(cbind(normnum_train, ohecat_train))
 model_train$logSalePrice <- log(train$SalePrice)
 ```
+
 # Model Building
 
-For now, we will build a model using the random forest algorithm, and see how well it performs.
-If it's lacking, we'll try using a combination of models.
+## Lasso
 
 ```{r, eval=F}
-modfit_rf <- randomForest(SalePrice ~ ., data = proc_train)
-modfit_boost <- gbm(SalePrice ~ ., data = proc_train)
+trctrl <- trainControl(method = "cv", number = 5, allowParallel = T, 
+                       verboseIter = F)
+glmnetGrid <- expand.grid(
+    alpha = 1,
+    lambda = 10^seq(-5, -1, length.out = 100))
+set.seed(69420)
+modfit_lasso <- caret::train(logSalePrice ~ ., data = model_train, 
+                        method = "glmnet",
+                        trControl = trctrl,
+                        tuneGrid = glmnetGrid
 
 ```
+
+## SVM
+
+```{r, eval=F}
+modfit_svm <- svm(logSalePrice ~ ., data = model_train)
+
+```
+
+## XGB
+
+```{r, eval=F}
+xgbGrid <- expand.grid(nrounds = 750,  
+                       max_depth = c(3, 5, 10, 15, 20),
+                       colsample_bytree = seq(0.5, 0.9, length.out = 5),
+                       eta = 0.1,
+                       gamma=0,
+                       min_child_weight = 1,
+                       subsample = 1
+                      )
+modfit_xgbm <- caret::train(logSalePrice ~ ., data = model_train,
+                            method = "xgbTree", 
+                            trControl = trctrl,
+                            tuneGrid = xgbGrid)
+
+```
+
+
 
 ```{r, echo=F}
 load("./data/modfit_rf.RData")
