@@ -1083,6 +1083,8 @@ neig_classify <- function(x){
       return(2)
    }else if (x %in% c("StoneBr", "NridgHt", "NoRidge")){
       return(3)
+   }else{
+      return(NA)
    }
 }
 
@@ -1092,37 +1094,105 @@ train <- select(train, -Neighborhood)
 ```
 
 
+# Data Preparation
+
+## Back to correlations
+
+Our dataset has now changed quite a bit : most redundancies have been removed by combining variables into one. Here, we'll have another quick look at correlations to see if there are some highly correlated variables left :
+
 
 ```{r}
-preObj <- preProcess(train[, -76], method = "knnImpute")
-proc_train <- data.table(cbind(predict(preObj, train[, -76]), train[, 76]))
+integer_cols2 <- sapply(train, function(y){(class(y) == "integer") | (class(y) == "numeric")})
+integer_train2 <- train[, .SD, .SDcols = integer_cols2]
+
+
+
+# Correlation matrix :
+train_cor2 <- cor(integer_train2, use = "complete")
+
+
+# Isolate SalePrice column and sort variables from highest cor with SalePrice
+# to lowest cor
+train_cor_sort2 <- row.names(as.matrix(sort(train_cor2[,'SalePrice'], decreasing = TRUE)))
+
+# Keep cors > 0.5
+#high_cors2 <- names(which(apply(train_cor_sort2, 1, function(x) abs(x)>0)))
+train_cor2 <- train_cor2[train_cor_sort2, train_cor_sort2]
+
+# Corrplot2 is a modified version of corrplot that prevents labels to go out of
+# the image's frame. If you're interested, it will be on my .Rmd file
+corrplot2(train_cor2, method = "square", type = "lower", 
+         title = "Correlation plot between numeric variables",
+         tl.col = "black", tl.cex = 0.6, 
+         mar = c(0,0,2,0))
 ```
 
-KNN-Imputing removed the majority of our NAs, but there might be some that remain in our factor variables, for which our algorithm could do nothing for. Let's see if there are some that remain :
+These variables seem to be highly correlated :
+
+- *GarageArea* and *GarageCars*
+- *TotRmsAbvGrd* and *TotalSF*
+- *TotRmsAbvGrd* and *BedroomAbvGr*
 
 ```{r}
-which(is.na(proc_train), arr.ind = T)
+with(train, cor(GarageArea, GarageCars))
+with(train, cor(TotRmsAbvGrd, TotalSF))
+with(train, cor(TotRmsAbvGrd, BedroomAbvGr))
+```
+We'll keep *GarageCars*, *TotalSF* that have a higher correlation with *SalePrice* and remove *GarageArea* and *TotRmsAbvGrd* :
+
+```{r}
+train <- select(train, -c("GarageArea", "TotRmsAbvGrd"))
 ```
 
-we have 5 rows that contain NAs. We will remove them from the set
+## Outliers
+
+We saw during the exploratory data analysis that our 364th overvation was an outlier. To improve our model's accuracy, we will remove it from the training set
 
 ```{r}
-proc_train <- proc_train[-c(376, 463, 690, 692, 970), ]
+train <- train[-364, ]
 ```
 
 ## Levels
 
+At the very beginning of our study, we split our original training set into a new train set and a sub-test to do some model verification.
 
+By doing so, we created a minor issue that needs fixing : factor levels discrepancies between the datasets. Some factor variables have levels that almost never appear. By splitting the original data into two, one level might never appear in the training set but will appear in our subtest or testing sets. That will confuse our model during prediction.
+
+Even if a level never appears in the training set, our model needs to know that it still exists. To do that, the following code will :
+
+- re-open the original training set
+- Pre-process it the same way we did so far to the train set
+- extract all levels for every factor variable
+- apply it to our training set variables
 
 ```{r}
 train_original <- read.csv(trainfile)
 train_original <- data.table(train_original)
+
+# Factorize variables :
 for (j in names(temp_na2)){
    set(train_original,which(is.na(train_original[[j]])),j,"None")
 }
 train_original[, (to_factor) := lapply(.SD, as.factor), .SDcols = to_factor]
-train_original <- train_original[, -c(1,60)]
-train_original <- train_original[, -c(38, 46, 60)]
+
+# Feature engineering + Removing variables 
+train_original <- select(train_original, -c("Id", "GarageYrBlt"))
+train_original[, TotalSF := GrLivArea + TotalBsmtSF]
+train_original <- select(train_original, -c("X1stFlrSF", "X2ndFlrSF", "LowQualFinSF", "GrLivArea", 
+                "BsmtFinSF1", "BsmtFinSF2", "BsmtUnfSF", "TotalBsmtSF"))
+train_original[, TotalBath := FullBath + (0.5 * HalfBath) + BsmtFullBath + (0.5 * BsmtHalfBath)]
+train_original <- select(train_original, -c("FullBath", "HalfBath", "BsmtFullBath",  "BsmtHalfBath"))
+train_original[, HouseAge := YrSold - YearBuilt]
+train_original[, RemodAdd := ifelse(YearBuilt == YearRemodAdd, 0, 1)]
+train_original <- select(train_original, -c("YearBuilt", "YrSold", "YearRemodAdd"))
+train_original[, NewHouse := ifelse(HouseAge <= 1, 1, 0)]
+train_original[, NewHouse := factor(NewHouse)]
+train_original[, NeighClass := neig_classify(Neighborhood), by = seq_len(nrow(train_original))]
+train_original[, NeighClass := factor(NeighClass)]
+train_original <- select(train_original, -Neighborhood)
+train_original <- select(train_original, -c("GarageArea", "TotRmsAbvGrd"))
+
+# Extracting levels
 level_list <- list()
 for (j in names(train_original)){
    if (class(train_original[[j]]) == "factor"){
@@ -1131,23 +1201,18 @@ for (j in names(train_original)){
       level_list <- c(level_list, list(NULL))
    }
 }
-```
 
-```{r}
+# Apply to training set :
+
 for (j in 1:dim(train)[2]){
    if (class(train[[names(train)[j]]]) == "factor"){
       levels(train[[names(train)[j]]]) <- level_list[[j]]
    }
 }
 
-for (j in 1:dim(proc_train)[2]){
-   if (class(proc_train[[names(proc_train)[j]]]) == "factor"){
-      levels(proc_train[[names(proc_train)[j]]]) <- level_list[[j]]
-   }
-}
-
-
 ```
+
+
 
 # Model Building
 
