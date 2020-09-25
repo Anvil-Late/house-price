@@ -30,6 +30,9 @@ library(randomForest)
 library(gbm)
 library(gridExtra)
 library(scales)
+library(psych)
+library(xgboost)
+library(e1071)
 ```
 
 # Loading the data
@@ -1225,15 +1228,87 @@ for (j in 1:dim(train)[2]){
 
 ```
 
-## Normalize numeric variables
+## Splitting the frame into numeric and categorical sub-frames
+
+We will pre-process numeric variables and categorical variables differently so we need to split the dataset into two :
 
 ```{r}
 numcols <- sapply(train, function(y){(class(y) == "integer") | (class(y) == "numeric")})
 num_train <- train[, .SD, .SDcols = numcols]
 num_train <- select(num_train, -SalePrice)
+
+cat_train <- train[, .SD, .SDcols = -numcols]
+```
+
+We have 17 numeric variables and 48 categorical variables :
+
+```{r}
+ncol(num_train)
+ncol(cat_train)
+```
+
+## Normalizing numerical variables
+
+```{r}
+PreObj <- preProcess(num_train, method = c("center", "scale"))
+normnum_train <- predict(PreObj, num_train)
+normnum_train <- data.table(normnum_train)
 ```
 
 
+## Encoding categorical variables
+
+To use machine learning models to their top efficiency, all of the predictors need to be numeric, which means that categorical variables need to be encoded in either dummy variables if they only have 2 levels or one-hot encoded if they have more.
+
+In our dataset, the majority of factor variables have more than 2 levels, which means that we will rather use one-hot encoding :
+
+```{r}
+ohe <- dummyVars(~ ., data = cat_train)
+ohecat_train <- predict(ohe, cat_train)
+ohecat_train <- data.table(ohecat_train)
+```
+
+## Skewness of response variable
+
+We saw at the beginning of our study that the response variable was skewed. Let's measure it :
+
+```{r}
+skew(train$SalePrice)
+```
+
+A perfectly symmetrical distribution would have a skewness of 0, and as long as the skewness is between -1 and 1, a distribution can be considered roughly normal. Here, our response variable is way above that, and it can also be seen in a Q-Q plot :
+
+
+```{r}
+
+ggplot(data = train, aes(sample = (SalePrice - mean(SalePrice)) / sd(SalePrice))) +
+   stat_qq(shape = 1) + geom_abline(intercept = 0, slope = 1, color = "blue") +
+   labs(x = "Theoretical Quantiles", y = "Sample Quantiles")+
+   ggtitle("Normal Q-Q Plot")
+```
+Before applying any transformation, let's simply try using the log instead and see how that solves the skewness;
+
+```{r}
+skew(log(train$SalePrice))
+```
+
+The skewness is much better, let's see how it show on the Q-Q plot :
+
+```{r}
+ggplot(data = train, aes(sample = (log(SalePrice) - mean(log(SalePrice))) / sd(log(SalePrice)))) +
+   stat_qq(shape = 1) + geom_abline(intercept = 0, slope = 1, color = "blue") +
+   labs(x = "Theoretical Quantiles", y = "Sample Quantiles")+
+   ggtitle("Normal Q-Q Plot")
+```
+
+## Final training set 
+
+We combine all our transformed data into one to create our final training set :
+
+```{r}
+model_train <- data.table(cbind(normnum_train, ohecat_train))
+model_train$logSalePrice <- log(train$SalePrice)
+```
 # Model Building
 
 For now, we will build a model using the random forest algorithm, and see how well it performs.
