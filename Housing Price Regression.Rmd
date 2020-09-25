@@ -970,18 +970,25 @@ train <- select(train, -c("FullBath", "HalfBath", "BsmtFullBath",  "BsmtHalfBath
 ```
 
 
-## House age
+## House age and remodeling
 
-The dataset provides us with two variables *YearBuilt* and *YearSold*. Intuitively, one would say that a house's age has a significant impact on its price. Therefore we will create a new variable which will be the age of the house when sold :
+The dataset provides us with two variables *YearBuilt* and *YearSold*. Intuitively, one would say that a house's age has a significant impact on its price. Therefore we will create a new variable which will be the age of the house when sold.
+
+
+In addition, we will replace the *YearRemodAdd* by a simpler variable, *RemodAdd* that will be 1 if the house has been remodeled and 0 if not
 
 ```{r}
 train[, HouseAge := YrSold - YearBuilt]
-train <- select(train, -c("YearBuilt", "YrSold"))
+train[, RemodAdd := ifelse(YearBuilt == YearRemodAdd, 0, 1)]
+train <- select(train, -c("YearBuilt", "YrSold", "YearRemodAdd"))
 ```
+
 
 ## Neighborhood
 
-Neighborhood is one of the most important variable. However, it is not only categorical, but also has a lot of levels. To make it easier for our model to take neighborhood into account, we want to split it into 3 categories, poor, medium and expensive. Let's see if there is a clear separation that can be used to classify them :
+Neighborhood is one of the most important variable. However, it is not only categorical, but also has a lot of levels. To make it easier for our model to take neighborhood into account, we want to split it into categories such as poor, medium and expensive. 
+
+Let's see if there is a clear separation that can be used to classify them. To do that, we will plot the mean sale price for every neighborhood :
 
 
 ```{r}
@@ -997,12 +1004,34 @@ ggplot(data = neig_sp_mean, aes(x = reorder(Neighborhood, mn), y = mn, fill = mn
    theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1),
          legend.position = "none")+
    geom_hline(yintercept = spmean, color = "red")+
+
+
+   geom_text(aes(0, spmean, label = "Dataset mean sale price", vjust = -1, hjust = -0.1))
+   
+
+
+```
+We can actually see 4 categories :
+
+- 3 neighborhoods appear to have mean sale prices far above the others
+- Similarly, 3 neighborhood seem to have lower mean sale prices
+- As for the other neighborhood, there seem to be a separation between Mitchel and SawyerW, around the dataset mean sale price.
+
+Therefore, we will apply the following classification for neighborhoods :
+
+```{r}
+ggplot(data = neig_sp_mean, aes(x = reorder(Neighborhood, mn), y = mn, fill = mn)) + 
+   geom_bar(stat = "identity")+
+   labs(x = "Neighborhood", y = "Mean Sale Price")+
+   scale_y_continuous(breaks= seq(0, 800000, by=50000))+
+   ggtitle("Neighborhood Categories")+
+   theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1),
+         legend.position = "none")+
+   geom_hline(yintercept = spmean, color = "red")+
    geom_vline(xintercept = 3.5, color = "green", size = 1.2)+
    geom_vline(xintercept = 12.5, color = "green", size = 1.2)+
    geom_vline(xintercept = 22.5, color = "green", size = 1.2)+
 
-   geom_text(aes(4.5, spmean, label = "Dataset mean price", vjust = -1, hjust = -0.1))+
-   
    geom_text(aes(1.25, 320000, label = "Poor", vjust = -1, hjust = -0.1))+
    geom_text(aes(6.5, 320000, label = "Med-low", vjust = -1, hjust = -0.1))+   
    geom_text(aes(16, 320000, label = "Med-high", vjust = -1, hjust = -0.1))+   
@@ -1010,6 +1039,25 @@ ggplot(data = neig_sp_mean, aes(x = reorder(Neighborhood, mn), y = mn, fill = mn
 
 ```
 
+```{r}
+neig_classify <- function(x){
+   if (x %in% c("MeadowV", "IDOTRR", "BrDale")){
+      return(0)
+   }else if (x %in% c("BrkSide", "Edwards", "OldTown", "Sawyer", "Blueste", 
+                      "NPkVill", "SWISU", "NAmes", "Mitchel")){
+      return(1)
+   }else if (x %in% c("SawyerW", "NWAmes", "Gilbert", "Blmngtn", "CollgCr",
+                      "Crawfor", "ClearCr", "Somerst", "Veenker", "Timber")){
+      return(2)
+   }else if (x %in% c("StoneBr", "NridgHt", "NoRidge")){
+      return(3)
+   }
+}
+
+train[, NeighClass := neig_classify(Neighborhood), by = seq_len(nrow(train))]
+train[, NeighClass := factor(NeighClass)]
+train <- select(train, -Neighborhood)
+```
 
 
 
