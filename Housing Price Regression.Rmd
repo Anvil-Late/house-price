@@ -933,6 +933,48 @@ ggplot(data = filter(imp_rf, inc_mse >= 5),
    labs(x = "Variables", 
         y = "% increase in MSE if variable is shuffled")
 ```
+Among the most important variables, we have a mix of categorical and numeric variables, which means that we have to use a model that properly uses large amounts of categorical data.
+
+
+
+# Feature engineering
+
+## Area Variables
+
+Our dataset contains several variables that deal with areas which have some redundancies :
+
+```{r}
+head(select(train, X1stFlrSF, X2ndFlrSF, LowQualFinSF, GrLivArea, BsmtFinSF1, BsmtFinSF2, BsmtUnfSF, TotalBsmtSF))
+```
+*GrLivArea* seems to be the sum of *X1stFlrSF*, *X2ndFlrSF*, and *LowQualFinSF*. Similarly, *TotalBsmtSF* seems to be the sum of *BsmtFinSF1*, *BsmtFinSF2*, and *BsmtUnfSF*. Let's verify it :
+
+```{r}
+with(train, cor((X1stFlrSF + X2ndFlrSF + LowQualFinSF), GrLivArea))
+with(train, cor((BsmtFinSF1 + BsmtFinSF2 + BsmtUnfSF), TotalBsmtSF))
+```
+The correlation is exactly 1, which means our assumption was correct. What we'll do here is that we will combine *GrLivArea* and *TotalBsmtSF* into a single *TotalSF* variable and delete the rest :
+
+```{r}
+train[, TotalSF := GrLivArea + TotalBsmtSF]
+var_remove <- c("X1stFlrSF", "X2ndFlrSF", "LowQualFinSF", "GrLivArea", 
+                "BsmtFinSF1", "BsmtFinSF2", "BsmtUnfSF", "TotalBsmtSF")
+```
+
+## Bathroom variables 
+
+Our dataset also contains several bathroom variables that will be combined into and replaced by a single variable. Variables labeled as "HalfBath" will be counted for half :
+
+```{r}
+train[, TotalBath := FullBath + (0.5 * HalfBath) + BsmtFullBath + (0.5 * BsmtHalfBath)]
+var_remove <- c(var_remove, "FullBath", "HalfBath", "BsmtFullBath",  "BsmtHalfBath")
+```
+
+
+
+
+
+
+
 
 ```{r}
 preObj <- preProcess(train[, -76], method = "knnImpute")
