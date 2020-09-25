@@ -1324,7 +1324,7 @@ set.seed(69420)
 modfit_lasso <- caret::train(logSalePrice ~ ., data = model_train, 
                         method = "glmnet",
                         trControl = trctrl,
-                        tuneGrid = glmnetGrid
+                        tuneGrid = glmnetGrid)
 
 ```
 
