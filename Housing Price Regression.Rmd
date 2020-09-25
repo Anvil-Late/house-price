@@ -996,11 +996,17 @@ ggplot(data = neig_sp_mean, aes(x = reorder(Neighborhood, mn), y = mn, fill = mn
    ggtitle("Mean Sale Price by Neighborhood")+
    theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1),
          legend.position = "none")+
-
    geom_hline(yintercept = spmean, color = "red")+
+   geom_vline(xintercept = 3.5, color = "green", size = 1.2)+
+   geom_vline(xintercept = 12.5, color = "green", size = 1.2)+
+   geom_vline(xintercept = 22.5, color = "green", size = 1.2)+
 
-
-   geom_text(aes(0, spmean, label = "mean price", vjust = -1, hjust = -0.1))
+   geom_text(aes(4.5, spmean, label = "Dataset mean price", vjust = -1, hjust = -0.1))+
+   
+   geom_text(aes(1.25, 320000, label = "Poor", vjust = -1, hjust = -0.1))+
+   geom_text(aes(6.5, 320000, label = "Med-low", vjust = -1, hjust = -0.1))+   
+   geom_text(aes(16, 320000, label = "Med-high", vjust = -1, hjust = -0.1))+   
+   geom_text(aes(23.25, 320000, label = "Rich", vjust = -1, hjust = -0.1))
 
 ```
 
