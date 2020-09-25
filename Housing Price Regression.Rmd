@@ -981,6 +981,7 @@ In addition, we will replace the *YearRemodAdd* by a simpler variable, *RemodAdd
 ```{r}
 train[, HouseAge := YrSold - YearBuilt]
 train[, RemodAdd := ifelse(YearBuilt == YearRemodAdd, 0, 1)]
+train[, RemodAdd := factor(RemodAdd)]
 train <- select(train, -c("YearBuilt", "YrSold", "YearRemodAdd"))
 ```
 
@@ -1094,7 +1095,16 @@ train <- select(train, -Neighborhood)
 ```
 
 
-# Data Preparation
+# Pre-processing
+
+We're almost ready to build our model, but before we do so we need to preprocess our data by :
+
+- Removing reduncancies (highly correlated variables)
+- Removing outliers
+- Updating factor levels
+- Normalize numeric variables
+- Encoding categorical variables
+- Normalize response variable
 
 ## Back to correlations
 
@@ -1138,10 +1148,12 @@ with(train, cor(GarageArea, GarageCars))
 with(train, cor(TotRmsAbvGrd, TotalSF))
 with(train, cor(TotRmsAbvGrd, BedroomAbvGr))
 ```
-We'll keep *GarageCars*, *TotalSF* that have a higher correlation with *SalePrice* and remove *GarageArea* and *TotRmsAbvGrd* :
+We'll keep *GarageCars*, *TotalSF* that have a higher correlation with *SalePrice* and remove *GarageArea* and *TotRmsAbvGrd*
+
+In addition, the *MoSold* variable has no correlation with *SalePrice* nor with any variable. This confirms an intuitive assumption that, globally, the month of the sale has little impact on the sale price. We will also remove this variable
 
 ```{r}
-train <- select(train, -c("GarageArea", "TotRmsAbvGrd"))
+train <- select(train, -c("GarageArea", "TotRmsAbvGrd", 'MoSold'))
 ```
 
 ## Outliers
@@ -1184,13 +1196,14 @@ train_original[, TotalBath := FullBath + (0.5 * HalfBath) + BsmtFullBath + (0.5 
 train_original <- select(train_original, -c("FullBath", "HalfBath", "BsmtFullBath",  "BsmtHalfBath"))
 train_original[, HouseAge := YrSold - YearBuilt]
 train_original[, RemodAdd := ifelse(YearBuilt == YearRemodAdd, 0, 1)]
+train_original[, RemodAdd := factor(RemodAdd)]
 train_original <- select(train_original, -c("YearBuilt", "YrSold", "YearRemodAdd"))
 train_original[, NewHouse := ifelse(HouseAge <= 1, 1, 0)]
 train_original[, NewHouse := factor(NewHouse)]
 train_original[, NeighClass := neig_classify(Neighborhood), by = seq_len(nrow(train_original))]
 train_original[, NeighClass := factor(NeighClass)]
 train_original <- select(train_original, -Neighborhood)
-train_original <- select(train_original, -c("GarageArea", "TotRmsAbvGrd"))
+train_original <- select(train_original, -c("GarageArea", "TotRmsAbvGrd", "MoSold"))
 
 # Extracting levels
 level_list <- list()
@@ -1212,6 +1225,13 @@ for (j in 1:dim(train)[2]){
 
 ```
 
+## Normalize numeric variables
+
+```{r}
+numcols <- sapply(train, function(y){(class(y) == "integer") | (class(y) == "numeric")})
+num_train <- train[, .SD, .SDcols = numcols]
+num_train <- select(num_train, -SalePrice)
+```
 
 
 # Model Building
