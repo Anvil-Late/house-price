@@ -1352,7 +1352,9 @@ We therefore have an excellent context to build an SVM model :
 
 ```{r, eval=F}
 set.seed(69420)
-modfit_svm <- svm(logSalePrice ~ ., data = model_train, cost = 4)
+modfit_svm <- svm(logSalePrice ~ ., data = model_train, method = "svmLinear", 
+                  trControl = trctrl, 
+                  tuneGrid = expand.grid(C = seq(0, 2, length = 20)))
 
 ```
 
