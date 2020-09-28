@@ -1101,6 +1101,19 @@ train[, NeighClass := factor(NeighClass)]
 train <- select(train, -Neighborhood)
 ```
 
+## Utilities
+
+In our dataset, one variable has a peculiar characteristic of having almost only one value : *Utilities*
+
+```{r}
+table(train$Utilities)
+```
+
+This variable has almost zero variation and will bring nothing to the model building, so we'll remove it
+
+```{r}
+train <- select(train, -Utilities)
+```
 
 # Pre-processing
 
@@ -1186,7 +1199,7 @@ Even if a level never appears in the training set, our model needs to know that 
 
 ```{r}
 train_original <- read.csv(trainfile)
-train_original <- data.table(train_original)
+train_original <- data.table(rbind(train_original, mutate(test, SalePrice = NA)))
 
 # Factorize variables :
 for (j in names(temp_na2)){
@@ -1195,7 +1208,7 @@ for (j in names(temp_na2)){
 train_original[, (to_factor) := lapply(.SD, as.factor), .SDcols = to_factor]
 
 # Feature engineering + Removing variables 
-train_original <- select(train_original, -c("Id", "GarageYrBlt"))
+train_original <- select(train_original, -c("Id", "GarageYrBlt", "Utilities"))
 train_original[, TotalSF := GrLivArea + TotalBsmtSF]
 train_original <- select(train_original, -c("X1stFlrSF", "X2ndFlrSF", "LowQualFinSF", "GrLivArea", 
                 "BsmtFinSF1", "BsmtFinSF2", "BsmtUnfSF", "TotalBsmtSF"))
@@ -1439,7 +1452,7 @@ dmat_train <- xgb.DMatrix(data = as.matrix(select(model_train, -logSalePrice)), 
 ```
 
 ```{r, eval=F}
-modfit_xgbm2 <- xgb.train(dmat_train, params = xgbparam, nrounds = 2771)
+modfit_xgbm2 <- xgb.train(dmat_train, params = xgbparam, nrounds = 2538)
 ```
 
 ```{r, echo=F}
@@ -1482,7 +1495,7 @@ for (j in names(temp_na2)){
 subtest[, (to_factor) := lapply(.SD, as.factor), .SDcols = to_factor]
 
 # Feature engineering + Removing variables 
-subtest <- select(subtest, -c("Id", "GarageYrBlt"))
+subtest <- select(subtest, -c("Id", "GarageYrBlt", "Utilities"))
 subtest[, TotalSF := GrLivArea + TotalBsmtSF]
 subtest <- select(subtest, -c("X1stFlrSF", "X2ndFlrSF", "LowQualFinSF", "GrLivArea", 
                 "BsmtFinSF1", "BsmtFinSF2", "BsmtUnfSF", "TotalBsmtSF"))
@@ -1623,7 +1636,7 @@ for (j in names(temp_na2)){
 test[, (to_factor) := lapply(.SD, as.factor), .SDcols = to_factor]
 
 # Feature engineering + Removing variables 
-test <- select(test, -c("Id", "GarageYrBlt"))
+test <- select(test, -c("Id", "GarageYrBlt", "Utilities"))
 test[, TotalSF := GrLivArea + TotalBsmtSF]
 test <- select(test, -c("X1stFlrSF", "X2ndFlrSF", "LowQualFinSF", "GrLivArea", 
                 "BsmtFinSF1", "BsmtFinSF2", "BsmtUnfSF", "TotalBsmtSF"))
@@ -1644,7 +1657,7 @@ test <- select(test, -c("GarageArea", "TotRmsAbvGrd", "MoSold"))
 # splitting into numeric and categorical variables
 numcols <- sapply(test, function(y){(class(y) == "integer") | (class(y) == "numeric")})
 num_test <- test[, .SD, .SDcols = numcols]
-num_test <- select(num_test, -SalePrice)
+
 
 cat_test <- test[, .SD, .SDcols = -numcols]
 
@@ -1653,14 +1666,31 @@ normnum_test <- predict(PreObj, num_test)
 normnum_test <- data.table(normnum_test)
 
 # encoding categorical vars
+#ohetest <- dummyVars(~ ., data = cat_test)
 ohecat_test <- predict(ohe, cat_test)
 ohecat_test <- data.table(ohecat_test)
 
 # binding into a preprocessed sub-test dataset
 preproc_test <- data.table(cbind(normnum_test, ohecat_test))
-preproc_test$logSalePrice <- log(test$SalePrice)
 
-# for XGB predictions we convert prepro_test into a DMatrix
-dmat_pptest <- xgb.DMatrix(data = as.matrix(select(preproc_test, -logSalePrice)))
 
+# for XGB predictions we convert preproc_test into a DMatrix
+dmat_pptest <- xgb.DMatrix(data = as.matrix(preproc_test))
+
+```
+
+## Creating the answer frame
+
+
+```{r}
+loganswer <- predict(modfit_xgbm2, dmat_pptest)
+answer <- exp(loganswer)
+
+solution <- data.frame(Id = test_ID, SalePrice = answer)
+```
+
+## Writing the csv file
+
+```{r, eval=F}
+write.csv(solution, "house_price_solution.csv", row.names = F)
 ```
