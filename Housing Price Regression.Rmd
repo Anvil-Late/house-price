@@ -22,6 +22,7 @@ Throughout this project, we will use the following packages:
 ```{r}
 library(ggplot2)
 library(ggrepel)
+library(Ckmeans.1d.dp) 
 library(dplyr)
 library(data.table)
 library(corrplot)
@@ -1367,11 +1368,71 @@ modfit_xgbm <- caret::train(logSalePrice ~ ., data = model_train,
 ```
 
 
-
 ```{r, echo=F}
 load("./data/modfit_svm.RData")
 load("./data/modfit_lasso.RData")
 load("./data/modfit_xgbm.RData")
 ```
 
+Let's see what the best tune for the XGB model is :
+
+```{r}
+modfit_xgbm$bestTune
+```
+
+We set these as default hyperparameters :
+
+```{r}
+xgbparam <- list(objective = "reg:linear",
+                 booster = "gbtree",
+                 max_depth = 2,
+                 colsample_bytree = 0.7,
+                 eta = 0.07,
+                 gamma=0,
+                 min_child_weight = 2,
+                 subsample = 1
+                )
+
+```
+
+Now we'll do another series of cross-validations, this time to figure out the best number of rounds :
+
+```{r}
+set.seed(1234)
+xgb_cv <- xgb.cv(params = xgbparam, data = as.matrix(model_train), 
+                 nrounds = 10000, nfold = 5, showsd = T, stratified = T, 
+                 print_every_n = 100, early_stopping_rounds = 15, maximize = F, 
+                 label = model_train$logSalePrice)
+```
+
+we now know all the parameters for a perfect xgb model fit :
+
+```{r}
+dmat_train <- xgb.DMatrix(data = as.matrix(select(model_train, -logSalePrice)), label = model_train$logSalePrice)
+
+```
+
+```{r, eval=F}
+modfit_xgbm2 <- xgb.train(dmat_train, params = xgbparam, nrounds = 2771)
+```
+
+```{r, echo=F}
+load("./data/modfit_xgbm2.RData")
+```
+
+XGBoost models also provides us with feature importance. Let's see if there was any changes :
+
+```{r}
+imp_mat <- xgb.importance(feature_names = colnames(model_train), model = modfit_xgbm2)
+xgb.ggplot.importance(importance_matrix = imp_mat[1:20], rel_to_first = T)
+```
+
+Numeric variables having more importance seems logical since categorical variables have been split into multiple dummy variables. Even so, we can see that some categorical variables keep having significant weight in our model.
+
+# Testing the model on our sub-test set
+
 We'll preprocess the sub-test set in the same way we did the train set :
+
+```{r}
+
+```
