@@ -6,6 +6,9 @@ output:
    html_document:
       code_folding: show
       keep_md : true
+      number_sections: true
+      toc: true
+      toc_depth: 3
 ---
 
 ```{r setup, include=FALSE}
@@ -13,6 +16,11 @@ knitr::opts_chunk$set(echo = TRUE, warning = F, message = F)
 ```
 
 # Summary
+
+In this study, our goal is to build a predictive model to answer the [House Prices Kaggle Competition](https://www.kaggle.com/c/house-prices-advanced-regression-techniques/overview), in which we are provided with diverse data concerning houses such as quality, number of bathrooms, areas, in order to predict the final sale price.
+
+The data provided being very diverse, the large majority of this study will be spent on exploratory data analysis and feature engineering. Following that, some time will be spend on model building and especially on tuning hyperparameters.
+
 
 # Loading packages
 
