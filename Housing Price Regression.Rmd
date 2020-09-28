@@ -1325,13 +1325,23 @@ trctrl <- trainControl(method = "cv", number = 5, allowParallel = T,
                        verboseIter = F)
 glmnetGrid <- expand.grid(
     alpha = 1,
-    lambda = 10^seq(-5, -1, length.out = 100))
-set.seed(69420)
+    lambda = 10^seq(-3, -1, length.out = 1000)
+    )
+set.seed(013969420)
 modfit_lasso <- caret::train(logSalePrice ~ ., data = model_train, 
                         method = "glmnet",
                         trControl = trctrl,
                         tuneGrid = glmnetGrid)
 
+```
+
+```{r, echo=F}
+load("./data/modfit_lasso.RData")
+```
+
+```{r}
+modfit_lasso$bestTune
+min(modfit_lasso$results$RMSE)
 ```
 
 ## SVM
@@ -1342,8 +1352,12 @@ We therefore have an excellent context to build an SVM model :
 
 ```{r, eval=F}
 set.seed(69420)
-modfit_svm <- svm(logSalePrice ~ ., data = model_train)
+modfit_svm <- svm(logSalePrice ~ ., data = model_train, cost = 4)
 
+```
+
+```{r, echo=F}
+load("./data/modfit_svm.RData")
 ```
 
 ## XGB
@@ -1369,8 +1383,6 @@ modfit_xgbm <- caret::train(logSalePrice ~ ., data = model_train,
 
 
 ```{r, echo=F}
-load("./data/modfit_svm.RData")
-load("./data/modfit_lasso.RData")
 load("./data/modfit_xgbm.RData")
 ```
 
@@ -1431,8 +1443,120 @@ Numeric variables having more importance seems logical since categorical variabl
 
 # Testing the model on our sub-test set
 
+## Preprocessing the sub-test set
+
 We'll preprocess the sub-test set in the same way we did the train set :
 
 ```{r}
+# Factorize variables :
+for (j in names(temp_na2)){
+   set(subtest,which(is.na(subtest[[j]])),j,"None")
+}
+subtest[, (to_factor) := lapply(.SD, as.factor), .SDcols = to_factor]
 
+# Feature engineering + Removing variables 
+subtest <- select(subtest, -c("Id", "GarageYrBlt"))
+subtest[, TotalSF := GrLivArea + TotalBsmtSF]
+subtest <- select(subtest, -c("X1stFlrSF", "X2ndFlrSF", "LowQualFinSF", "GrLivArea", 
+                "BsmtFinSF1", "BsmtFinSF2", "BsmtUnfSF", "TotalBsmtSF"))
+subtest[, TotalBath := FullBath + (0.5 * HalfBath) + BsmtFullBath + (0.5 * BsmtHalfBath)]
+subtest <- select(subtest, -c("FullBath", "HalfBath", "BsmtFullBath",  "BsmtHalfBath"))
+subtest[, HouseAge := YrSold - YearBuilt]
+subtest[, RemodAdd := ifelse(YearBuilt == YearRemodAdd, 0, 1)]
+subtest[, RemodAdd := factor(RemodAdd)]
+subtest <- select(subtest, -c("YearBuilt", "YrSold", "YearRemodAdd"))
+subtest[, NewHouse := ifelse(HouseAge <= 1, 1, 0)]
+subtest[, NewHouse := factor(NewHouse)]
+subtest[, NeighClass := neig_classify(Neighborhood), by = seq_len(nrow(subtest))]
+subtest[, NeighClass := factor(NeighClass)]
+subtest <- select(subtest, -Neighborhood)
+subtest <- select(subtest, -c("GarageArea", "TotRmsAbvGrd", "MoSold"))
+
+# Updating levels
+for (j in 1:dim(subtest)[2]){
+   if (class(subtest[[names(subtest)[j]]]) == "factor"){
+      levels(subtest[[names(subtest)[j]]]) <- level_list[[j]]
+   }
+}
+
+# splitting into numeric and categorical variables
+numcols <- sapply(subtest, function(y){(class(y) == "integer") | (class(y) == "numeric")})
+num_subtest <- subtest[, .SD, .SDcols = numcols]
+num_subtest <- select(num_subtest, -SalePrice)
+
+cat_subtest <- subtest[, .SD, .SDcols = -numcols]
+
+# normalizing num vars
+normnum_subtest <- predict(PreObj, num_subtest)
+normnum_subtest <- data.table(normnum_subtest)
+
+# encoding categorical vars
+ohecat_subtest <- predict(ohe, cat_subtest)
+ohecat_subtest <- data.table(ohecat_subtest)
+
+# binding into a preprocessed sub-test dataset
+preproc_subtest <- data.table(cbind(normnum_subtest, ohecat_subtest))
+preproc_subtest$logSalePrice <- log(subtest$SalePrice)
+
+# for XGB predictions we convert prepro_subtest into a DMatrix
+dmat_ppsubtest <- xgb.DMatrix(data = as.matrix(select(preproc_subtest, -logSalePrice)))
+```
+
+## Predictions
+
+```{r}
+logpred_lasso <- predict(modfit_lasso, select(preproc_subtest, -logSalePrice))
+pred_lasso <- exp(logpred_lasso)
+
+logpred_svm <- predict(modfit_svm, select(preproc_subtest, -logSalePrice))
+pred_svm <- exp(logpred_svm)
+
+logpred_xgb <- predict(modfit_xgbm2, dmat_ppsubtest)
+pred_xgb <- exp(logpred_xgb)
+
+comparison_table <- data.table(SalePrice = subtest$SalePrice,
+                               SP_lasso = pred_lasso,
+                               SP_svm = pred_svm,
+                               SP_xgb = pred_xgb)
+head(comparison_table)
+```
+
+Let's check the RMSE for each predictor :
+
+### RMSE for Lasso
+
+```{r}
+rmse_lasso <- with(comparison_table, RMSE(SalePrice, SP_lasso))
+rmse_lasso / mean(subtest$SalePrice)
+```
+
+```{r}
+qplot(data = comparison_table, x = SalePrice, y = SP_lasso) + geom_abline(intercept = 0, slope = 1)
+```
+
+```{r}
+rmse_svm <- with(comparison_table, RMSE(SalePrice, SP_svm))
+rmse_svm / mean(subtest$SalePrice)
+```
+
+```{r}
+qplot(data = comparison_table, x = SalePrice, y = SP_svm) + geom_abline(intercept = 0, slope = 1)
+```
+
+```{r}
+rmse_xgb <- with(comparison_table, RMSE(SalePrice, SP_xgb))
+rmse_xgb / mean(subtest$SalePrice)
+```
+```{r}
+qplot(data = comparison_table, x = SalePrice, y = SP_xgb) + geom_abline(intercept = 0, slope = 1)
+```
+
+
+```{r}
+comparison_table[, ensemble := (SP_lasso + 1.2*SP_svm + 4*SP_xgb)/6.2]
+```
+
+```{r}
+rmse_ens <- with(comparison_table, RMSE(SalePrice, ensemble))
+rmse_ens / mean(subtest$SalePrice)
 ```
