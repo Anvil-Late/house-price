@@ -787,6 +787,7 @@ ggplot(data = train, aes(x = OverallQual, y = SalePrice)) + geom_boxplot()+
                          rownames(train), '')
           ))
 ```
+
 #### Above grade (ground) living area square feet
 
 ```{r}
@@ -937,6 +938,7 @@ ggplot(data = filter(imp_rf, inc_mse >= 5),
    labs(x = "Variables", 
         y = "% increase in MSE if variable is shuffled")
 ```
+
 Among the most important variables, we have a mix of categorical and numeric variables, which means that we have to use a model that properly uses large amounts of categorical data.
 
 
@@ -1047,6 +1049,7 @@ ggplot(data = neig_sp_mean, aes(x = reorder(Neighborhood, mn), y = mn, fill = mn
 
 
 ```
+
 We can actually see 4 categories :
 
 - 3 neighborhoods appear to have mean sale prices far above the others
@@ -1314,6 +1317,8 @@ model_train$logSalePrice <- log(train$SalePrice)
 
 ## Lasso
 
+Lasso models are quite robust to outliers and deal well with data that is numeric and categorical so we'll train one with generic hyperparameters that do not penalize to much compared to simple RMSE minimization :
+
 ```{r, eval=F}
 trctrl <- trainControl(method = "cv", number = 5, allowParallel = T, 
                        verboseIter = F)
@@ -1330,6 +1335,10 @@ modfit_lasso <- caret::train(logSalePrice ~ ., data = model_train,
 
 ## SVM
 
+A key feature of our data is it is relatively small, and we reduced the number of variables quite a bit during our feature engineering. In addition, all of the categorical variables have been encoded. 
+
+We therefore have an excellent context to build an SVM model :
+
 ```{r, eval=F}
 set.seed(69420)
 modfit_svm <- svm(logSalePrice ~ ., data = model_train)
@@ -1338,13 +1347,15 @@ modfit_svm <- svm(logSalePrice ~ ., data = model_train)
 
 ## XGB
 
+Here, our first goal is to define the proper hyperparameters to use, so we use the following grid to train a model fit with caret, which will then tell us what the best tune is :
+
 ```{r, eval=F}
 xgbGrid <- expand.grid(nrounds = 750,  
-                       max_depth = c(3, 5, 10, 15, 20),
+                       max_depth = seq(1, 10, by = 1),
                        colsample_bytree = seq(0.5, 0.9, length.out = 5),
-                       eta = 0.1,
+                       eta = seq(0.01, 0.1, length.out = 4),
                        gamma=0,
-                       min_child_weight = 1,
+                       min_child_weight = seq(1, 5, by = 1),
                        subsample = 1
                       )
 set.seed(69420)
