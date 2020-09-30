@@ -1315,6 +1315,7 @@ ggplot(data = train, aes(sample = (SalePrice - mean(SalePrice)) / sd(SalePrice))
    labs(x = "Theoretical Quantiles", y = "Sample Quantiles")+
    ggtitle("Normal Q-Q Plot")
 ```
+
 Before applying any transformation, let's simply try using the log instead and see how that solves the skewness;
 
 ```{r}
