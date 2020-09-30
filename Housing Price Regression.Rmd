@@ -42,7 +42,6 @@ library(scales)
 library(psych)
 library(xgboost)
 library(e1071)
-library(glmnet)
 ```
 
 # Loading the data
@@ -1482,18 +1481,6 @@ ohecat_train <- predict(ohe, cat_train)
 ohecat_train <- data.table(ohecat_train)
 ```
 
-### Low variation dummy variables
-
-One-hot encoding added a lot of variables in our dataset and there could be some that could have near zero occurences. Not only would these bring low predictive value to our model, it could even make it overfit our training set and lower its performance. 
-
-What we'll do here is that we will remove dummy variables that appear less than 15 times (1% of the observations).
-
-```{r}
-low_occurence <- names(which(ohecat_train[, lapply(.SD, sum) < 15]))
-ohecat_train <- select(ohecat_train, -low_occurence)
-```
-
-
 ## Skewness of response variable
 
 We saw at the beginning of our study that the response variable was skewed. Let's measure it :
@@ -1567,33 +1554,14 @@ modfit_lasso2 <- caret::train(logSalePrice ~ ., data = model_train,
 load(url("https://github.com/Anvil-Late/house-price/raw/master/data/modfit_lasso.RData"))
 ```
 
-We'll use the **cv.glmnet** function to select the best penalty factor $\lambda$ using cross-validation :
-
-```{r, eval=F}
-set.seed(013969420)
-try_ridge <- cv.glmnet(as.matrix(select(model_train, -logSalePrice)), 
-                       model_train$logSalePrice, alpha = 0)
-try_lasso <- cv.glmnet(as.matrix(select(model_train, -logSalePrice)), 
-                       model_train$logSalePrice, alpha = 1)
-try_elnet <- cv.glmnet(as.matrix(select(model_train, -logSalePrice)), 
-                       model_train$logSalePrice, alpha = 0.001)
-
-lambda_ridge <- try_ridge$lambda.min
-lambda_lasso <- try_lasso$lambda.min
-lambda_elnet <- try_elnet$lambda.min
-```
-
-Let's train our model using the selected $\lambda$ :
+Let's see what are the best tune for our model and its accuracy :
 
 ```{r}
-modfit_ridge <- glmnet(as.matrix(select(model_train, -logSalePrice)), 
-                       model_train$logSalePrice, alpha = 0, lambda = lambda_ridge)
-modfit_lasso <- glmnet(as.matrix(select(model_train, -logSalePrice)), 
-                       model_train$logSalePrice, alpha = 1, lambda = lambda_lasso)
-modfit_elnet <- glmnet(as.matrix(select(model_train, -logSalePrice)), 
-                       model_train$logSalePrice, alpha = 0.001, lambda = lambda_elnet)
+modfit_lasso2$bestTune
+min(modfit_lasso2$results$RMSE)
 ```
 
+<<<<<<< HEAD
 
 Let's see what are our models' accuracies :
 
@@ -1612,6 +1580,9 @@ RMSE(train2$SalePrice,
 ```
 
 The accuracies seem pretty good and equivalent for all 3 models.
+=======
+The accuracy seems pretty good.
+>>>>>>> parent of 4f36b73... added lowvar dummy removal
 
 ## SVM
 
@@ -1619,9 +1590,8 @@ A key feature of our data is it is relatively small, and we reduced the number o
 
 We therefore have an excellent context to build an SVM model :
 
-
-
 ```{r, eval=F}
+<<<<<<< HEAD
 set.seed(12345)
 tuned = tune.svm(logSalePrice ~ ., data = model_train, 
                  gamma = c(0.01, 0.1, 1, 10),
@@ -1647,14 +1617,16 @@ modfit_svm <- svm(logSalePrice ~ ., data = model_train,
                   gamma = 0.01,
                   epsilon = 0.1,
                   coef0 = 0.1)
-```
+=======
+set.seed(69420)
+modfit_svm2 <- svm(logSalePrice ~ ., data = model_train, cost = 3)
 
+>>>>>>> parent of 4f36b73... added lowvar dummy removal
+```
 
 ```{r, echo=F}
 load(url("https://github.com/Anvil-Late/house-price/raw/master/data/modfit_svm.RData"))
 ```
-
-
 
 Let's check the accuracy of our model :
 
@@ -1664,18 +1636,13 @@ RMSE(train2$SalePrice,
      ) / mean(train2$SalePrice)
 ```
 
-The accuracy is even better than the lasso, ridge and elastinet models.
+The accuracy is about the same as the lasso model.
 
 ## XGB
 
 Here, our first goal is to define the proper hyperparameters to use, so we use the following grid to train a model fit with caret, which will then tell us what the best tune is :
 
 ```{r, eval=F}
-library(parallel)
-library(doParallel)
-cluster1 <- makeCluster(detectCores() - 1)
-registerDoParallel(cluster1)
-
 xgbGrid <- expand.grid(nrounds = 750,  
                        max_depth = seq(1, 10, by = 1),
                        colsample_bytree = seq(0.5, 0.9, length.out = 5),
@@ -1685,12 +1652,14 @@ xgbGrid <- expand.grid(nrounds = 750,
                        subsample = 1
                       )
 set.seed(69420)
+<<<<<<< HEAD
 modfit_xgbm <- caret::train(logSalePrice ~ ., data = model_train,
+=======
+modfit_xgbm3 <- caret::train(logSalePrice ~ ., data = model_train,
+>>>>>>> parent of 4f36b73... added lowvar dummy removal
                             method = "xgbTree", 
                             trControl = trctrl,
                             tuneGrid = xgbGrid)
-stopCluster(cluster1)
-registerDoSEQ()
 
 ```
 
@@ -1702,7 +1671,11 @@ load(url("https://github.com/Anvil-Late/house-price/raw/master/data/modfit_xgbm.
 Let's see what the best tune for the XGB model is :
 
 ```{r}
+<<<<<<< HEAD
 modfit_xgbm$bestTune
+=======
+modfit_xgbm3$bestTune
+>>>>>>> parent of 4f36b73... added lowvar dummy removal
 ```
 
 We set these as default hyperparameters :
@@ -1711,7 +1684,11 @@ We set these as default hyperparameters :
 xgbparam <- list(objective = "reg:linear",
                  booster = "gbtree",
                  max_depth = 2,
+<<<<<<< HEAD
                  colsample_bytree = 0.6,
+=======
+                 colsample_bytree = 0.7,
+>>>>>>> parent of 4f36b73... added lowvar dummy removal
                  eta = 0.07,
                  gamma=0,
                  min_child_weight = 5,
@@ -1726,7 +1703,7 @@ Now we'll do another series of cross-validations, this time to figure out the be
 set.seed(1234)
 xgb_cv <- xgb.cv(params = xgbparam, data = as.matrix(model_train), 
                  nrounds = 10000, nfold = 5, showsd = T, stratified = T, 
-                 print_every_n = 50, early_stopping_rounds = 15, maximize = F, 
+                 print_every_n = 100, early_stopping_rounds = 15, maximize = F, 
                  label = model_train$logSalePrice)
 ```
 
@@ -1738,7 +1715,11 @@ dmat_train <- xgb.DMatrix(data = as.matrix(select(model_train, -logSalePrice)), 
 ```
 
 ```{r, eval=F}
+<<<<<<< HEAD
 modfit_xgbm2 <- xgb.train(dmat_train, params = xgbparam, nrounds = 1792)
+=======
+modfit_xgbm2 <- xgb.train(dmat_train, params = xgbparam, nrounds = 2538)
+>>>>>>> parent of 4f36b73... added lowvar dummy removal
 ```
 
 ```{r, echo=F}
@@ -1748,9 +1729,15 @@ load(url("https://github.com/Anvil-Late/house-price/raw/master/data/modfit_xgbm2
 We can now check the accuracy of our model :
 
 ```{r}
+<<<<<<< HEAD
 RMSE(train2$SalePrice, 
      exp(predict(modfit_xgbm2, dmat_train))
      ) / mean(train2$SalePrice)
+=======
+RMSE(train$SalePrice, 
+     exp(predict(modfit_xgbm2, dmat_train))
+     ) / mean(train$SalePrice)
+>>>>>>> parent of 4f36b73... added lowvar dummy removal
 ```
 The accuracy is extremely good, and way above the other models.
 
@@ -1766,7 +1753,7 @@ Numeric variables having more importance seems logical since categorical variabl
 
 # Using the test dataset for the final submission
 
-## Initial Pre-processing the test set
+## Pre-processing the test set :
 
 ```{r}
 # Saving ID column, necessary for submission
@@ -1777,146 +1764,6 @@ for (j in names(temp_na2)){
    set(test,which(is.na(test[[j]])),j,"None")
 }
 test[, (to_factor) := lapply(.SD, as.factor), .SDcols = to_factor]
-
-```
-
-
-## Checking NAs
-
-```{r}
-temp_na3 <- as.numeric(test[, lapply(.SD, function(y){sum(is.na(y))})])
-names(temp_na3) <- names(test)
-temp_na3 <- temp_na3[temp_na3 > 0]
-print(temp_na3)
-```
-### LotFrontage
-
-We'll do the same as with the train set :
-
-```{r}
-# Removing LotFrontage NAs based on the train dataset means :
-for (i in 1:nrow(test)){
-   if (is.na(test$LotFrontage[i])){
-      ngbr <- test$Neighborhood[i]
-      lf_mean <- neig_lf_mean[.(ngbr)]$meanLF # calling the mean with the key
-      test$LotFrontage[i] <- lf_mean
-   }
-}
-```
-
-### MSZoning
-
-We have 4 missing values which we will replace by the most probable value :
-
-```{r}
-test[is.na(MSZoning),]$MSZoning <- names(sort(-table(test$MSZoning)))[1]
-```
-
-### Exterior variables
-
-A house has to have an exterior coverage so "None" is not a possible value. Therefore, when an *Exterior1st* or *Exterior2nd* value is missing, we'll input the most probable one :
-
-```{r}
-test[is.na(Exterior1st), ]$Exterior1st <- names(sort(-table(test$Exterior1st)))[1]
-test[is.na(Exterior2nd), ]$Exterior2nd <- names(sort(-table(test$Exterior2nd)))[1]
-```
-
-### MasVnrType & MasVnrArea 
-
-We have 16 NAs for MasVnrType and 15 for MasVnrArea, which means that one MasVnrType has a typo, because you can't have a masonry area without a masonry type. 
-
-```{r}
-test[is.na(test$MasVnrType) & !is.na(test$MasVnrArea), c("Id", 'MasVnrType', 'MasVnrArea')]
-```
-
-It's the house n°2611 that has this issue. We'll imput the most frequent type of masonry type (actually the second most frequent because the first is "None") :
-
-```{r}
-test[test$Id == 2611,]$MasVnrType <-  names(sort(-table(test$MasVnrType)))[2]
-```
-
-As for the other areas, we'll set them to 0 is the type is NA and we'll set the types to "none"
-
-```{r}
-test[is.na(MasVnrType),]$MasVnrArea <- 0
-test[is.na(MasVnrType),]$MasVnrType <- "None"
-```
-
-### Basement Variables
-
-```{r}
-test[is.na(BsmtFinSF1), .SD, 
-     .SDcols = c("Id", "BsmtFinType1", "BsmtFinSF1","BsmtFinType2", "BsmtFinSF2", "BsmtUnfSF", "TotalBsmtSF", 
-                 "BsmtFullBath", "BsmtHalfBath")]
-```
-One row contains most of our remaining NAs for basement variables, simply because there is no basement. We'll set these values to 0
-
-```{r}
-test[test$Id == 2121,]$BsmtFinSF1 <- 0
-test[test$Id == 2121,]$BsmtFinSF2 <- 0
-test[test$Id == 2121,]$BsmtUnfSF <- 0
-test[test$Id == 2121,]$TotalBsmtSF <- 0
-test[test$Id == 2121,]$BsmtFullBath <- 0
-test[test$Id == 2121,]$BsmtHalfBath <- 0
-```
-
-### Bathroom variables
-
-```{r}
-test[is.na(BsmtFullBath), .SD, .SDcols = c("Id", "BsmtFinType1", "BsmtFinType2", "BsmtFullBath", "BsmtHalfBath")]
-```
-These bathroom surfaces should logically be set to 0 :
-
-```{r}
-test[test$Id == 2189, ]$BsmtFullBath <- 0
-test[test$Id == 2189, ]$BsmtHalfBath <- 0
-```
-
-### Kitchen variables
-
-There is only 1 missing value, which we'll replace by the most common value :
-
-```{r}
-test[is.na(KitchenQual)]$KitchenQual <- names(sort(-table(test$KitchenQual)))[1]
-```
-
-### Home functionality variable
-
-There is only 2 missing values, which we'll replace by the most common value :
-
-```{r}
-test[is.na(Functional)]$Functional <- names(sort(-table(test$Functional)))[1]
-```
-
-### GarageCars and GarageArea
-
-```{r}
-test[is.na(GarageCars), .SD, 
-     .SDcols = c("Id", "GarageCars", "GarageArea", "GarageType")]
-```
-
-We'll assume that there is a typo and this house has no garage :
-
-```{r}
-test[test$Id == 2577, ]$GarageCars <- 0
-test[test$Id == 2577, ]$GarageArea <- 0
-test[test$Id == 2577, ]$GarageType <- "None"
-```
-
-### SaleType variable
-
-There is only 1 missing value, which we'll replace by the most common value :
-
-```{r}
-test[is.na(SaleType)]$SaleType <- names(sort(-table(test$SaleType)))[1]
-```
-
-
-## Final pre-processing of the test set
-
-There are some remaining NAs but they are on columns that will be removed during pre-processing :
-```{r}
-
 
 # Feature engineering + Removing variables 
 test <- select(test, -c("Id", "GarageYrBlt", "Utilities"))
@@ -1970,7 +1817,6 @@ normnum_test <- data.table(normnum_test)
 #ohetest <- dummyVars(~ ., data = cat_test)
 ohecat_test <- predict(ohe, cat_test)
 ohecat_test <- data.table(ohecat_test)
-ohecat_test <- select(ohecat_test, -low_occurence)
 
 # binding into a preprocessed sub-test dataset
 preproc_test <- data.table(cbind(normnum_test, test$YearBuilt, test$YrSold, test$MoSold, ohecat_test))
@@ -1983,9 +1829,9 @@ dmat_pptest <- xgb.DMatrix(data = as.matrix(preproc_test))
 
 ## Creating the answer frame
 
-We'll combine the models into an ensemble one. The lasso model being the weakest one, its coefficient will be 1, then the SVM model's coefficient will be 2 and finally the XGBM model's will be 4 :
 
 ```{r}
+<<<<<<< HEAD
 loganswer_ridge <- predict(modfit_ridge, as.matrix(preproc_test))
 answer_ridge <- exp(loganswer_ridge)
 
@@ -2025,33 +1871,16 @@ solution_5 <- data.frame(Id = test_ID, SalePrice = answer_bis)
 colnames(solution_5) <- c("Id", "SalePrice")
 solution_6 <- data.frame(Id = test_ID, SalePrice = answer_ter)
 colnames(solution_6) <- c("Id", "SalePrice")
+=======
+loganswer <- predict(modfit_xgbm2, dmat_pptest)
+answer <- exp(loganswer)
+>>>>>>> parent of 4f36b73... added lowvar dummy removal
 
+solution <- data.frame(Id = test_ID, SalePrice = answer)
 ```
 
 ## Writing the csv file
 
 ```{r, eval=F}
-write.csv(solution_1, "house_price_solution_5.csv", row.names = F)
-write.csv(solution_2, "house_price_solution_6.csv", row.names = F)
-write.csv(solution_3, "house_price_solution_7.csv", row.names = F)
-write.csv(solution_4, "house_price_solution_8.csv", row.names = F)
-write.csv(solution_5, "house_price_solution_9.csv", row.names = F)
-write.csv(solution_6, "house_price_solution_10.csv", row.names = F)
-
-write.csv(solution_1_a, "house_price_solution_5a.csv", row.names = F)
-write.csv(solution_1_b, "house_price_solution_5b.csv", row.names = F)
-write.csv(solution_1_c, "house_price_solution_5c.csv", row.names = F)
-
+write.csv(solution, "house_price_solution.csv", row.names = F)
 ```
-
-Ridge : 0.14391
-Lasso : 0.16004
-Elastinet : 0.14430
-
-RLE : 0.14575
-SVM : 0.23927
-XGBM : 0.13287
-Ensemble : 0.15334
-Ensemble without svm : 0.13284
-Ridge + Elastinet + XGBM : 0.13494
-
