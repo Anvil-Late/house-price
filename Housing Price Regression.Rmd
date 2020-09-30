@@ -1866,4 +1866,8 @@ ggplot(data = scoring, aes(x = model, y = accuracy, fill = model)) +
    
 ```
 
+The XGBM model is by far superior to the others and is only slightly improved when combined with Lasso, Ridge and Elastinet.
+
+The SVM model had a very high accuracy on our training set but performs poorly on the testing set. It appears that it is severely overfitting.
+
 
