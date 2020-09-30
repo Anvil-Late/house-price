@@ -1562,6 +1562,7 @@ min(modfit_lasso2$results$RMSE)
 ```
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 
 Let's see what are our models' accuracies :
 
@@ -1583,6 +1584,9 @@ The accuracies seem pretty good and equivalent for all 3 models.
 =======
 The accuracy seems pretty good.
 >>>>>>> parent of 4f36b73... added lowvar dummy removal
+=======
+The accuracy seems pretty good.
+>>>>>>> parent of 4f36b73... added lowvar dummy removal
 
 ## SVM
 
@@ -1591,6 +1595,7 @@ A key feature of our data is it is relatively small, and we reduced the number o
 We therefore have an excellent context to build an SVM model :
 
 ```{r, eval=F}
+<<<<<<< HEAD
 <<<<<<< HEAD
 set.seed(12345)
 tuned = tune.svm(logSalePrice ~ ., data = model_train, 
@@ -1624,6 +1629,13 @@ modfit_svm2 <- svm(logSalePrice ~ ., data = model_train, cost = 3)
 >>>>>>> parent of 4f36b73... added lowvar dummy removal
 ```
 
+=======
+set.seed(69420)
+modfit_svm2 <- svm(logSalePrice ~ ., data = model_train, cost = 3)
+
+```
+
+>>>>>>> parent of 4f36b73... added lowvar dummy removal
 ```{r, echo=F}
 load(url("https://github.com/Anvil-Late/house-price/raw/master/data/modfit_svm.RData"))
 ```
@@ -1653,7 +1665,11 @@ xgbGrid <- expand.grid(nrounds = 750,
                       )
 set.seed(69420)
 <<<<<<< HEAD
+<<<<<<< HEAD
 modfit_xgbm <- caret::train(logSalePrice ~ ., data = model_train,
+=======
+modfit_xgbm3 <- caret::train(logSalePrice ~ ., data = model_train,
+>>>>>>> parent of 4f36b73... added lowvar dummy removal
 =======
 modfit_xgbm3 <- caret::train(logSalePrice ~ ., data = model_train,
 >>>>>>> parent of 4f36b73... added lowvar dummy removal
@@ -1672,7 +1688,11 @@ Let's see what the best tune for the XGB model is :
 
 ```{r}
 <<<<<<< HEAD
+<<<<<<< HEAD
 modfit_xgbm$bestTune
+=======
+modfit_xgbm3$bestTune
+>>>>>>> parent of 4f36b73... added lowvar dummy removal
 =======
 modfit_xgbm3$bestTune
 >>>>>>> parent of 4f36b73... added lowvar dummy removal
@@ -1685,7 +1705,11 @@ xgbparam <- list(objective = "reg:linear",
                  booster = "gbtree",
                  max_depth = 2,
 <<<<<<< HEAD
+<<<<<<< HEAD
                  colsample_bytree = 0.6,
+=======
+                 colsample_bytree = 0.7,
+>>>>>>> parent of 4f36b73... added lowvar dummy removal
 =======
                  colsample_bytree = 0.7,
 >>>>>>> parent of 4f36b73... added lowvar dummy removal
@@ -1716,7 +1740,11 @@ dmat_train <- xgb.DMatrix(data = as.matrix(select(model_train, -logSalePrice)), 
 
 ```{r, eval=F}
 <<<<<<< HEAD
+<<<<<<< HEAD
 modfit_xgbm2 <- xgb.train(dmat_train, params = xgbparam, nrounds = 1792)
+=======
+modfit_xgbm2 <- xgb.train(dmat_train, params = xgbparam, nrounds = 2538)
+>>>>>>> parent of 4f36b73... added lowvar dummy removal
 =======
 modfit_xgbm2 <- xgb.train(dmat_train, params = xgbparam, nrounds = 2538)
 >>>>>>> parent of 4f36b73... added lowvar dummy removal
@@ -1832,6 +1860,7 @@ dmat_pptest <- xgb.DMatrix(data = as.matrix(preproc_test))
 
 ```{r}
 <<<<<<< HEAD
+<<<<<<< HEAD
 loganswer_ridge <- predict(modfit_ridge, as.matrix(preproc_test))
 answer_ridge <- exp(loganswer_ridge)
 
@@ -1871,6 +1900,10 @@ solution_5 <- data.frame(Id = test_ID, SalePrice = answer_bis)
 colnames(solution_5) <- c("Id", "SalePrice")
 solution_6 <- data.frame(Id = test_ID, SalePrice = answer_ter)
 colnames(solution_6) <- c("Id", "SalePrice")
+=======
+loganswer <- predict(modfit_xgbm2, dmat_pptest)
+answer <- exp(loganswer)
+>>>>>>> parent of 4f36b73... added lowvar dummy removal
 =======
 loganswer <- predict(modfit_xgbm2, dmat_pptest)
 answer <- exp(loganswer)
