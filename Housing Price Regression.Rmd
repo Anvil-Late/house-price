@@ -96,7 +96,7 @@ Let's have a look at the dimensions of our training set :
 dim(train)
 ```
 
-We have a set that has a lot of variables, 81 in total, but is overall quite small, with only 1024 observations.
+We have a set that has a lot of variables, 81 in total, but is overall quite small, with only 1460 observations.
 Let's have a look at the variables we have here :
 
 ```{r}
@@ -1166,6 +1166,7 @@ with(train, cor(GarageArea, GarageCars))
 with(train, cor(TotRmsAbvGrd, TotalSF))
 with(train, cor(TotRmsAbvGrd, BedroomAbvGr))
 ```
+
 We'll keep *GarageCars*, *TotalSF* that have a higher correlation with *SalePrice* and remove *GarageArea* and *TotRmsAbvGrd*
 
 In addition, the *MoSold* variable has no correlation with *SalePrice* nor with any variable. This confirms an intuitive assumption that, globally, the month of the sale has little impact on the sale price. We will also remove this variable
@@ -1184,13 +1185,14 @@ train <- train[-c(524, 1299), ]
 
 ## Levels
 
-At the very beginning of our study, we split our original training set into a new train set and a sub-test to do some model verification.
+In our study, we only did exploratory data analysis without any interaction on our testing set.
 
-By doing so, we created a minor issue that needs fixing : factor levels discrepancies between the datasets. Some factor variables have levels that almost never appear. By splitting the original data into two, one level might never appear in the training set but will appear in our subtest or testing sets. That will confuse our model during prediction.
+By doing so, we created a minor issue that needs fixing : factor levels discrepancies between the datasets. Some factor variables have levels that almost never appear, so one level might never appear in the training set but will appear in our testing set. That will confuse our model during prediction.
 
 Even if a level never appears in the training set, our model needs to know that it still exists. To do that, the following code will :
 
 - re-open the original training set
+- concatenate it to the testing set
 - Pre-process it the same way we did so far to the train set
 - extract all levels for every factor variable
 - apply it to our training set variables
@@ -1339,28 +1341,13 @@ model_train$logSalePrice <- log(train$SalePrice)
 
 # Model Building
 
-## Lasso
+## Ridge, Lasso, Elastinet
 
-Lasso models are quite robust to outliers and deal well with data that is numeric and categorical so we'll train one with generic hyperparameters that do not penalize to much compared to simple RMSE minimization :
+Glmnet models are quite robust to outliers and deal well with data that is numeric and categorical so we'll train one with generic hyperparameters that do not penalize to much compared to simple RMSE minimization :
 
-```{r, eval=F}
-trctrl <- trainControl(method = "cv", number = 5, allowParallel = T, 
-                       verboseIter = F)
-glmnetGrid <- expand.grid(
-    alpha = 1,
-    lambda = 10^seq(-3, -1, length.out = 1000)
-    )
-set.seed(013969420)
-modfit_lasso2 <- caret::train(logSalePrice ~ ., data = model_train, 
-                        method = "glmnet",
-                        trControl = trctrl,
-                        tuneGrid = glmnetGrid)
 
-```
 
-```{r, echo=F}
-load(url("https://github.com/Anvil-Late/house-price/raw/master/data/modfit_lasso.RData"))
-```
+
 
 We'll use the **cv.glmnet** function to select the best penalty factor $\lambda$ using cross-validation :
 
@@ -1378,9 +1365,15 @@ lambda_lasso <- try_lasso$lambda.min
 lambda_elnet <- try_elnet$lambda.min
 ```
 
+```{r, echo=F}
+load(url("https://github.com/Anvil-Late/house-price/raw/master/data/modfit_elnet.RData"))
+load(url("https://github.com/Anvil-Late/house-price/raw/master/data/modfit_lasso.RData"))
+load(url("https://github.com/Anvil-Late/house-price/raw/master/data/modfit_ridge.RData"))
+```
+
 Let's train our model using the selected $\lambda$ :
 
-```{r}
+```{r, eval=F}
 modfit_ridge <- glmnet(as.matrix(select(model_train, -logSalePrice)), 
                        model_train$logSalePrice, alpha = 0, lambda = lambda_ridge)
 modfit_lasso <- glmnet(as.matrix(select(model_train, -logSalePrice)), 
@@ -1411,31 +1404,38 @@ The accuracies seem pretty good and equivalent for all 3 models.
 
 A key feature of our data is it is relatively small, and we reduced the number of variables quite a bit during our feature engineering. In addition, all of the categorical variables have been encoded. 
 
-We therefore have an excellent context to build an SVM model :
+We therefore have an excellent context to build an SVM model.
 
-
+The process is extremely long so we'll do some parallel processing :
 
 ```{r, eval=F}
+library(parallel)
+library(doParallel)
+cluster1 <- makeCluster(detectCores() - 1)
+registerDoParallel(cluster1)
+
 set.seed(12345)
 tuned = tune.svm(logSalePrice ~ ., data = model_train, 
                  gamma = c(0.01, 0.1, 1, 10),
                  cost = c(seq(0.1, 1, by = 0.1), seq(1, 10, by = 1), seq(10,100, by=10)),
                  coef0 = c(0.1, 1, 10),
                  tunecontrol=tune.control(cross=10))
-
+stopCluster(cluster1)
+registerDoSEQ()
 ```
 
+```{r, echo=F}
+load(url("https://github.com/Anvil-Late/house-price/raw/master/data/tuned.RData"))
+```
+
+Let's see what are the best model's parameters :
 ```{r}
 tuned$best.parameters
+tuned$best.model
 ```
-```{r}
-modfit_svm <- svm(logSalePrice ~ ., data = model_train, 
-                  type = "eps",
-                  kernel = "radial",
-                  cost = 5,
-                  gamma = 0.01,
-                  epsilon = 0.1,
-                  coef0 = 0.1)
+
+```{r, eval=F}
+modfit_svm <- tuned$best.model
 ```
 
 
@@ -1457,13 +1457,17 @@ The accuracy is even better than the lasso, ridge and elastinet models.
 
 ## XGB
 
-Here, our first goal is to define the proper hyperparameters to use, so we use the following grid to train a model fit with caret, which will then tell us what the best tune is :
+Here, our first goal is to define the proper hyperparameters to use, so we use the following grid to train a model fit with caret, which will then tell us what the best tune is. We will also call the parallel and doParallel packages to use parallel processing :
 
 ```{r, eval=F}
+
 library(parallel)
 library(doParallel)
 cluster1 <- makeCluster(detectCores() - 1)
 registerDoParallel(cluster1)
+
+trctrl <- trainControl(method = "cv", number = 5, allowParallel = T, 
+                       verboseIter = F)
 
 xgbGrid <- expand.grid(nrounds = 750,  
                        max_depth = seq(1, 10, by = 1),
@@ -1485,7 +1489,7 @@ registerDoSEQ()
 
 
 ```{r, echo=F}
-load(url("https://github.com/Anvil-Late/house-price/raw/master/data/modfit_xgbm.RData"))
+load(url("https://github.com/Anvil-Late/house-price/raw/master/data/modfit_xgbm2.RData"))
 ```
 
 Let's see what the best tune for the XGB model is :
@@ -1531,7 +1535,7 @@ modfit_xgbm <- xgb.train(dmat_train, params = xgbparam, nrounds = 722)
 ```
 
 ```{r, echo=F}
-load(url("https://github.com/Anvil-Late/house-price/raw/master/data/modfit_xgbm2.RData"))
+load(url("https://github.com/Anvil-Late/house-price/raw/master/data/modfit_xgbm.RData"))
 ```
 
 We can now check the accuracy of our model :
@@ -1578,6 +1582,11 @@ names(temp_na3) <- names(test)
 temp_na3 <- temp_na3[temp_na3 > 0]
 print(temp_na3)
 ```
+
+The test set has a lot of NAs. Doing exploratory analysis on a testing set is never recommended so we'll have to either correct these missing values using known features of our training set, or by calling values from the test set without exploring them.
+
+Removing NAs will greatly improve our models' accuracies, and is mandatory for the SVM model that will return an error if any NAs are present.
+
 ### LotFrontage
 
 We'll do the same as with the train set :
@@ -1815,13 +1824,45 @@ write.csv(solution_1_c, "house_price_solution_5c.csv", row.names = F)
 
 ```
 
-Ridge : 0.14391
-Lasso : 0.16004
-Elastinet : 0.14430
+# Score
 
-RLE : 0.14575
-SVM : 0.23927
-XGBM : 0.13287
-Ensemble : 0.15334
-Ensemble without svm : 0.13284
-Ridge + Elastinet + XGBM : 0.13494
+We obtained the following score for our models :
+
+- Ridge : 0.14391
+- Lasso : 0.16004
+- Elastinet : 0.14430
+- Ridge + Lasso + Elastinet : 0.14575
+- SVM : 0.23927
+- XGBM : 0.13287
+- Ensemble : 0.15334
+- Ensemble without SVM : 0.13284
+
+
+```{r, echo = F}
+scoring <- data.table(
+   model = factor(c(
+      "Ridge", "Lasso", "Elastinet", "Ridge + Lasso + Elnet",
+      "SVM", "XGBM", "Ensemble", "Ensemble w/o SVM"
+   )),
+   accuracy = c(1-0.14391, 1-0.16004, 1-0.14430, 1-0.14575, 1-0.23927, 
+                1-0.13287, 1-0.15334, 1-0.13284)
+)
+
+ggplot(data = scoring, aes(x = model, y = accuracy, fill = model)) + 
+   geom_bar(stat = "identity")+
+   theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1),
+         legend.position = "none")+
+   labs(x = "Model", 
+        y = "Accuracy")+
+   geom_text(aes(1, 0.25, label = "Score : 0.14430", vjust = 0, hjust = 0, angle = 90))+
+   geom_text(aes(2, 0.25, label = "Score : 0.15334", vjust = 0, hjust = 0, angle = 90))+
+   geom_text(aes(3, 0.25, label = "Score : 0.13284 (best)", vjust = 0, hjust = 0, angle = 90))+
+   geom_text(aes(4, 0.25, label = "Score : 0.16004", vjust = 0, hjust = 0, angle = 90))+
+   geom_text(aes(5, 0.25, label = "Score : 0.14391", vjust = 0, hjust = 0, angle = 90))+
+   geom_text(aes(6, 0.25, label = "Score : 0.14575", vjust = 0, hjust = 0, angle = 90))+
+   geom_text(aes(7, 0.25, label = "Score : 0.23927", vjust = 0, hjust = 0, angle = 90))+
+   geom_text(aes(8, 0.25, label = "Score : 0.13287", vjust = 0, hjust = 0, angle = 90))
+   
+```
+
+
