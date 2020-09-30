@@ -1323,10 +1323,12 @@ train <- select(train, -c("GarageArea", "TotRmsAbvGrd", "YearRemodAdd"))
 
 ## Outliers
 
-We saw during the exploratory data analysis that our 364th overvation was an outlier. To improve our model's accuracy, we will remove it from the training set
+We saw during the exploratory data analysis that our dataset has several outliers. What we'll do is that for every numeric variable we'll drop the rows that are outside of the 1.7*IQR bracket :
+
+
 
 ```{r}
-train <- train[-c(524, 1299), ]
+#train <- train[-c(524, 1299), ]
 ```
 
 ## Levels
@@ -1352,23 +1354,50 @@ for (j in names(temp_na2)){
 }
 train_original[, (to_factor) := lapply(.SD, as.factor), .SDcols = to_factor]
 
+train_original <- train_original[-row_remove, ]
+for (i in 1:nrow(train_original)){
+   if (is.na(train_original$LotFrontage[i])){
+      ngbr <- train_original$Neighborhood[i]
+      lf_mean <- neig_lf_mean[.(ngbr)]$meanLF # calling the mean with the key
+      train_original$LotFrontage[i] <- lf_mean
+   }
+}
+
+
 # Feature engineering + Removing variables 
 train_original <- select(train_original, -c("Id", "GarageYrBlt", "Utilities"))
 train_original[, TotalSF := GrLivArea + TotalBsmtSF]
-train_original <- select(train_original, -c("X1stFlrSF", "X2ndFlrSF", "LowQualFinSF", "GrLivArea", 
-                "BsmtFinSF1", "BsmtFinSF2", "BsmtUnfSF", "TotalBsmtSF"))
+train_original <- select(train_original, -c("X1stFlrSF", "X2ndFlrSF", "LowQualFinSF", 
+                "BsmtFinSF1", "BsmtFinSF2", "BsmtUnfSF"))
+train_original[, BsmtAreaClass := bsmt_classify(TotalBsmtSF), by = seq_len(nrow(train_original))]
+train_original[, BsmtAreaClass := factor(BsmtAreaClass)]
+train_original[, GrLivAreaClass := grliv_classify(GrLivArea), by = seq_len(nrow(train_original))]
+train_original[, GrLivAreaClass := factor(GrLivAreaClass)]
+train_original[, LotFrontageClass := lotfront_classify(LotFrontage), by = seq_len(nrow(train_original))]
+train_original[, LotFrontageClass := factor(LotFrontageClass)]
+train_original[, LotAreaClass := lotarea_classify(LotArea), by = seq_len(nrow(train_original))]
+train_original[, LotAreaClass := factor(LotAreaClass)]
+train_original[, TotalSFClass := totalsf_classify(TotalSF), by = seq_len(nrow(train_original))]
+train_original[, TotalSFClass := factor(TotalSFClass)]
+train_original[, YearBuiltClass := year_classify(YearBuilt), by = seq_len(nrow(train_original))]
+train_original[, YearBuiltClass := factor(YearBuiltClass)]
+train_original[, YearRemodAddClass := year_classify(YearRemodAdd), by = seq_len(nrow(train_original))]
+train_original[, YearRemodAddClass := factor(YearRemodAddClass)]
+train_original[, MasVnrAreaClass := vnr_classify(MasVnrArea), by = seq_len(nrow(train_original))]
+train_original[, MasVnrAreaClass := factor(MasVnrAreaClass)]
+
 train_original[, TotalBath := FullBath + (0.5 * HalfBath) + BsmtFullBath + (0.5 * BsmtHalfBath)]
 train_original <- select(train_original, -c("FullBath", "HalfBath", "BsmtFullBath",  "BsmtHalfBath"))
 train_original[, HouseAge := YrSold - YearBuilt]
 train_original[, RemodAdd := ifelse(YearBuilt == YearRemodAdd, 0, 1)]
 train_original[, RemodAdd := factor(RemodAdd)]
-train_original <- select(train_original, -c("YearBuilt", "YrSold", "YearRemodAdd"))
+#train_original <- select(train_original, -c("YearBuilt", "YrSold", "YearRemodAdd"))
 train_original[, NewHouse := ifelse(HouseAge <= 1, 1, 0)]
 train_original[, NewHouse := factor(NewHouse)]
 train_original[, NeighClass := neig_classify(Neighborhood), by = seq_len(nrow(train_original))]
 train_original[, NeighClass := factor(NeighClass)]
-train_original <- select(train_original, -Neighborhood)
-train_original <- select(train_original, -c("GarageArea", "TotRmsAbvGrd", "MoSold"))
+#train_original <- select(train_original, -Neighborhood)
+train_original <- select(train_original, -c("GarageArea", "TotRmsAbvGrd", "YearRemodAdd"))
 
 # Extracting levels
 level_list <- list()
@@ -1397,7 +1426,7 @@ We will pre-process numeric variables and categorical variables differently so w
 ```{r}
 numcols <- sapply(train, function(y){(class(y) == "integer") | (class(y) == "numeric")})
 num_train <- train[, .SD, .SDcols = numcols]
-num_train <- select(num_train, -SalePrice)
+num_train <- select(num_train, -c("YearBuilt", "YrSold", "MoSold", "SalePrice"))
 
 cat_train <- train[, .SD, .SDcols = -numcols]
 ```
@@ -1407,6 +1436,29 @@ We have 17 numeric variables and 48 categorical variables :
 ```{r}
 ncol(num_train)
 ncol(cat_train)
+```
+## Detecting outliers in numeric variables
+
+```{r}
+num_train2 <- select(num_train, c("LotFrontage", "LotArea", "MasVnrArea", 
+                                  "TotalBsmtSF", "GrLivArea", "WoodDeckSF", 
+                                  "OpenPorchSF", "TotalSF", "HouseAge"))
+numtrain_Q1s <- apply(num_train2, 2, function(x){quantile(x)[2]})
+numtrain_Q3s <- apply(num_train2, 2, function(x){quantile(x)[4]})
+numtrain_IQR <- numtrain_Q3s-numtrain_Q1s
+numtrain_outlier_range <- 1.7 * numtrain_IQR
+```
+
+```{r}
+lowoutlierlimit <-  numtrain_Q1s - numtrain_outlier_range
+islowoutlier <- apply(num_train2, 1, function(x){x < lowoutlierlimit})
+id_lowoutlier <- which(apply(islowoutlier, 2, sum) > 0)
+
+highoutlierlimit <-  numtrain_Q3s + numtrain_outlier_range
+ishighoutlier <- apply(num_train2, 1, function(x){x > highoutlierlimit})
+id_highoutlier <- which(apply(ishighoutlier, 2, sum) > 0)
+
+id_outliers <- unique(c(id_lowoutlier, id_highoutlier))
 ```
 
 ## Normalizing numerical variables
@@ -1480,8 +1532,14 @@ ggplot(data = train, aes(sample = (log(SalePrice) - mean(log(SalePrice))) / sd(l
 We combine all our transformed data into one to create our final training set :
 
 ```{r}
-model_train <- data.table(cbind(normnum_train, ohecat_train))
+model_train <- data.table(cbind(normnum_train, train$YearBuilt, train$YrSold, train$MoSold, ohecat_train))
 model_train$logSalePrice <- log(train$SalePrice)
+```
+
+And we drop the detected outliers :
+
+```{r}
+model_train <- model_train[-id_outliers, ]
 ```
 
 # Model Building
@@ -1540,15 +1598,16 @@ modfit_elnet <- glmnet(as.matrix(select(model_train, -logSalePrice)),
 Let's see what are our models' accuracies :
 
 ```{r}
-RMSE(train$SalePrice, 
+train2 <- train[-id_outliers,]
+RMSE(train2$SalePrice, 
      exp(predict(modfit_ridge, as.matrix(select(model_train, -logSalePrice))))
-     ) / mean(train$SalePrice)
-RMSE(train$SalePrice, 
+     ) / mean(train2$SalePrice)
+RMSE(train2$SalePrice, 
      exp(predict(modfit_lasso, as.matrix(select(model_train, -logSalePrice))))
-     ) / mean(train$SalePrice)
-RMSE(train$SalePrice, 
+     ) / mean(train2$SalePrice)
+RMSE(train2$SalePrice, 
      exp(predict(modfit_elnet, as.matrix(select(model_train, -logSalePrice))))
-     ) / mean(train$SalePrice)
+     ) / mean(train2$SalePrice)
    
 ```
 
@@ -1566,7 +1625,7 @@ We therefore have an excellent context to build an SVM model :
 set.seed(12345)
 tuned = tune.svm(logSalePrice ~ ., data = model_train, 
                  gamma = c(0.01, 0.1, 1, 10),
-                 cost = c(seq(0.1, 1, by = 0.1), seq(1, 10, by = 1), seq(10,100, by=10)),
+                 cost = c(seq(0.1, 1, by = 0.1), seq(1, 10, by = 1), seq(10,100, by=20)),
                  coef0 = c(0.1, 1, 10),
                  tunecontrol=tune.control(cross=10))
 
@@ -1576,10 +1635,15 @@ tuned = tune.svm(logSalePrice ~ ., data = model_train,
 tuned$best.parameters
 ```
 ```{r}
+tuned$best.model
+```
+
+
+```{r}
 modfit_svm <- svm(logSalePrice ~ ., data = model_train, 
                   type = "eps",
                   kernel = "radial",
-                  cost = 5,
+                  cost = 0.9,
                   gamma = 0.01,
                   epsilon = 0.1,
                   coef0 = 0.1)
@@ -1595,9 +1659,9 @@ load(url("https://github.com/Anvil-Late/house-price/raw/master/data/modfit_svm.R
 Let's check the accuracy of our model :
 
 ```{r}
-RMSE(train$SalePrice, 
+RMSE(train2$SalePrice, 
      exp(predict(modfit_svm, select(model_train, -logSalePrice)))
-     ) / mean(train$SalePrice)
+     ) / mean(train2$SalePrice)
 ```
 
 The accuracy is even better than the lasso, ridge and elastinet models.
@@ -1621,7 +1685,7 @@ xgbGrid <- expand.grid(nrounds = 750,
                        subsample = 1
                       )
 set.seed(69420)
-modfit_xgbm2 <- caret::train(logSalePrice ~ ., data = model_train,
+modfit_xgbm <- caret::train(logSalePrice ~ ., data = model_train,
                             method = "xgbTree", 
                             trControl = trctrl,
                             tuneGrid = xgbGrid)
@@ -1638,7 +1702,7 @@ load(url("https://github.com/Anvil-Late/house-price/raw/master/data/modfit_xgbm.
 Let's see what the best tune for the XGB model is :
 
 ```{r}
-modfit_xgbm2$bestTune
+modfit_xgbm$bestTune
 ```
 
 We set these as default hyperparameters :
@@ -1646,11 +1710,11 @@ We set these as default hyperparameters :
 ```{r}
 xgbparam <- list(objective = "reg:linear",
                  booster = "gbtree",
-                 max_depth = 5,
-                 colsample_bytree = 0.5,
+                 max_depth = 2,
+                 colsample_bytree = 0.6,
                  eta = 0.07,
                  gamma=0,
-                 min_child_weight = 2,
+                 min_child_weight = 5,
                  subsample = 1
                 )
 
@@ -1674,7 +1738,7 @@ dmat_train <- xgb.DMatrix(data = as.matrix(select(model_train, -logSalePrice)), 
 ```
 
 ```{r, eval=F}
-modfit_xgbm <- xgb.train(dmat_train, params = xgbparam, nrounds = 722)
+modfit_xgbm2 <- xgb.train(dmat_train, params = xgbparam, nrounds = 1792)
 ```
 
 ```{r, echo=F}
@@ -1684,16 +1748,16 @@ load(url("https://github.com/Anvil-Late/house-price/raw/master/data/modfit_xgbm2
 We can now check the accuracy of our model :
 
 ```{r}
-RMSE(train$SalePrice, 
-     exp(predict(modfit_xgbm, dmat_train))
-     ) / mean(train$SalePrice)
+RMSE(train2$SalePrice, 
+     exp(predict(modfit_xgbm2, dmat_train))
+     ) / mean(train2$SalePrice)
 ```
 The accuracy is extremely good, and way above the other models.
 
 Moreover, XGBoost models also provides us with feature importance. Let's see if there was any changes :
 
 ```{r}
-imp_mat <- xgb.importance(feature_names = colnames(model_train), model = modfit_xgbm)
+imp_mat <- xgb.importance(feature_names = colnames(model_train), model = modfit_xgbm2)
 xgb.ggplot.importance(importance_matrix = imp_mat[1:20], rel_to_first = T)
 ```
 
@@ -1857,8 +1921,26 @@ There are some remaining NAs but they are on columns that will be removed during
 # Feature engineering + Removing variables 
 test <- select(test, -c("Id", "GarageYrBlt", "Utilities"))
 test[, TotalSF := GrLivArea + TotalBsmtSF]
-test <- select(test, -c("X1stFlrSF", "X2ndFlrSF", "LowQualFinSF", "GrLivArea", 
-                "BsmtFinSF1", "BsmtFinSF2", "BsmtUnfSF", "TotalBsmtSF"))
+test <- select(test, -c("X1stFlrSF", "X2ndFlrSF", "LowQualFinSF", 
+                "BsmtFinSF1", "BsmtFinSF2", "BsmtUnfSF"))
+test[, BsmtAreaClass := bsmt_classify(TotalBsmtSF), by = seq_len(nrow(test))]
+test[, BsmtAreaClass := factor(BsmtAreaClass)]
+test[, GrLivAreaClass := grliv_classify(GrLivArea), by = seq_len(nrow(test))]
+test[, GrLivAreaClass := factor(GrLivAreaClass)]
+test[, LotFrontageClass := lotfront_classify(LotFrontage), by = seq_len(nrow(test))]
+test[, LotFrontageClass := factor(LotFrontageClass)]
+test[, LotAreaClass := lotarea_classify(LotArea), by = seq_len(nrow(test))]
+test[, LotAreaClass := factor(LotAreaClass)]
+
+test[, TotalSFClass := totalsf_classify(TotalSF), by = seq_len(nrow(test))]
+test[, TotalSFClass := factor(TotalSFClass)]
+test[, YearBuiltClass := year_classify(YearBuilt), by = seq_len(nrow(test))]
+test[, YearBuiltClass := factor(YearBuiltClass)]
+test[, YearRemodAddClass := year_classify(YearRemodAdd), by = seq_len(nrow(test))]
+test[, YearRemodAddClass := factor(YearRemodAddClass)]
+test[, MasVnrAreaClass := vnr_classify(MasVnrArea), by = seq_len(nrow(test))]
+test[, MasVnrAreaClass := factor(MasVnrAreaClass)]
+
 test[, TotalBath := FullBath + (0.5 * HalfBath) + BsmtFullBath + (0.5 * BsmtHalfBath)]
 test <- select(test, -c("FullBath", "HalfBath", "BsmtFullBath",  "BsmtHalfBath"))
 test[, HouseAge := YrSold - YearBuilt]
@@ -1870,13 +1952,13 @@ test[, NewHouse := factor(NewHouse)]
 test[, NeighClass := neig_classify(Neighborhood), by = seq_len(nrow(test))]
 test[, NeighClass := factor(NeighClass)]
 #test <- select(test, -Neighborhood)
-test <- select(test, -c("GarageArea", "TotRmsAbvGrd", "MoSold"))
+test <- select(test, -c("GarageArea", "TotRmsAbvGrd", "YearRemodAdd"))
 
 
 # splitting into numeric and categorical variables
 numcols <- sapply(test, function(y){(class(y) == "integer") | (class(y) == "numeric")})
 num_test <- test[, .SD, .SDcols = numcols]
-
+num_test <- select(num_test, -c("YearBuilt", "YrSold", "MoSold"))
 
 cat_test <- test[, .SD, .SDcols = -numcols]
 
@@ -1891,7 +1973,7 @@ ohecat_test <- data.table(ohecat_test)
 ohecat_test <- select(ohecat_test, -low_occurence)
 
 # binding into a preprocessed sub-test dataset
-preproc_test <- data.table(cbind(normnum_test, ohecat_test))
+preproc_test <- data.table(cbind(normnum_test, test$YearBuilt, test$YrSold, test$MoSold, ohecat_test))
 
 
 # for XGB predictions we convert preproc_test into a DMatrix
@@ -1918,7 +2000,7 @@ answer_RLE <- (answer_ridge + answer_lasso + answer_elnet) / 3
 loganswer_svm <- predict(modfit_svm, preproc_test)
 answer_svm <- exp(loganswer_svm)
 
-loganswer_xgbm <- predict(modfit_xgbm, dmat_pptest)
+loganswer_xgbm <- predict(modfit_xgbm2, dmat_pptest)
 answer_xgbm <- exp(loganswer_xgbm)
 
 answer <- (answer_RLE +  answer_svm + answer_xgbm) / 3
