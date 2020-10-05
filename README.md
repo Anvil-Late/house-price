@@ -1055,6 +1055,7 @@ ggplot(data = train, aes(sample = (SalePrice - mean(SalePrice)) / sd(SalePrice))
 ```
 
 ![](Housing-Price-Regression_files/figure-html/unnamed-chunk-55-1.png)<!-- -->
+
 Before applying any transformation, let's simply try using the log instead and see how that solves the skewness;
 
 
@@ -1324,11 +1325,11 @@ xgb_cv <- xgb.cv(params = xgbparam, data = as.matrix(model_train),
 ```
 
 ```
-## [18:09:10] WARNING: amalgamation/../src/objective/regression_obj.cu:170: reg:linear is now deprecated in favor of reg:squarederror.
-## [18:09:10] WARNING: amalgamation/../src/objective/regression_obj.cu:170: reg:linear is now deprecated in favor of reg:squarederror.
-## [18:09:10] WARNING: amalgamation/../src/objective/regression_obj.cu:170: reg:linear is now deprecated in favor of reg:squarederror.
-## [18:09:10] WARNING: amalgamation/../src/objective/regression_obj.cu:170: reg:linear is now deprecated in favor of reg:squarederror.
-## [18:09:10] WARNING: amalgamation/../src/objective/regression_obj.cu:170: reg:linear is now deprecated in favor of reg:squarederror.
+## [19:02:06] WARNING: amalgamation/../src/objective/regression_obj.cu:170: reg:linear is now deprecated in favor of reg:squarederror.
+## [19:02:06] WARNING: amalgamation/../src/objective/regression_obj.cu:170: reg:linear is now deprecated in favor of reg:squarederror.
+## [19:02:06] WARNING: amalgamation/../src/objective/regression_obj.cu:170: reg:linear is now deprecated in favor of reg:squarederror.
+## [19:02:06] WARNING: amalgamation/../src/objective/regression_obj.cu:170: reg:linear is now deprecated in favor of reg:squarederror.
+## [19:02:06] WARNING: amalgamation/../src/objective/regression_obj.cu:170: reg:linear is now deprecated in favor of reg:squarederror.
 ## [1]	train-rmse:10.723375+0.005491	test-rmse:10.722725+0.024506 
 ## Multiple eval metrics are present. Will use test_rmse for early stopping.
 ## Will train until test_rmse hasn't improved in 15 rounds.
@@ -1375,7 +1376,7 @@ RMSE(train$SalePrice,
 ```
 
 ```
-## [18:09:24] WARNING: amalgamation/../src/objective/regression_obj.cu:170: reg:linear is now deprecated in favor of reg:squarederror.
+## [19:02:20] WARNING: amalgamation/../src/objective/regression_obj.cu:170: reg:linear is now deprecated in favor of reg:squarederror.
 ```
 
 ```
@@ -1391,7 +1392,7 @@ imp_mat <- xgb.importance(feature_names = colnames(model_train), model = modfit_
 ```
 
 ```
-## [18:09:24] WARNING: amalgamation/../src/objective/regression_obj.cu:170: reg:linear is now deprecated in favor of reg:squarederror.
+## [19:02:20] WARNING: amalgamation/../src/objective/regression_obj.cu:170: reg:linear is now deprecated in favor of reg:squarederror.
 ```
 
 ```r
@@ -1585,3 +1586,163 @@ test[is.na(GarageCars), .SD,
 ##      Id GarageCars GarageArea GarageType
 ## 1: 2577         NA         NA     Detchd
 ```
+
+We'll assume that there is a typo and this house has no garage :
+
+
+```r
+test[test$Id == 2577, ]$GarageCars <- 0
+test[test$Id == 2577, ]$GarageArea <- 0
+test[test$Id == 2577, ]$GarageType <- "None"
+```
+
+### SaleType variable
+
+There is only 1 missing value, which we'll replace by the most common value :
+
+
+```r
+test[is.na(SaleType)]$SaleType <- names(sort(-table(test$SaleType)))[1]
+```
+
+
+## Final pre-processing of the test set
+
+There are some remaining NAs but they are on columns that will be removed during pre-processing :
+
+```r
+# Feature engineering + Removing variables 
+test <- select(test, -c("Id", "GarageYrBlt", "Utilities"))
+test[, TotalSF := GrLivArea + TotalBsmtSF]
+test <- select(test, -c("X1stFlrSF", "X2ndFlrSF", "LowQualFinSF", "GrLivArea", 
+                "BsmtFinSF1", "BsmtFinSF2", "BsmtUnfSF", "TotalBsmtSF"))
+test[, TotalBath := FullBath + (0.5 * HalfBath) + BsmtFullBath + (0.5 * BsmtHalfBath)]
+test <- select(test, -c("FullBath", "HalfBath", "BsmtFullBath",  "BsmtHalfBath"))
+test[, HouseAge := YrSold - YearBuilt]
+test[, RemodAdd := ifelse(YearBuilt == YearRemodAdd, 0, 1)]
+test[, RemodAdd := factor(RemodAdd)]
+test <- select(test, -c("YearBuilt", "YrSold", "YearRemodAdd"))
+test[, NewHouse := ifelse(HouseAge <= 1, 1, 0)]
+test[, NewHouse := factor(NewHouse)]
+test[, NeighClass := neig_classify(Neighborhood), by = seq_len(nrow(test))]
+test[, NeighClass := factor(NeighClass)]
+test <- select(test, -Neighborhood)
+test <- select(test, -c("GarageArea", "TotRmsAbvGrd", "MoSold"))
+
+
+# splitting into numeric and categorical variables
+numcols <- sapply(test, function(y){(class(y) == "integer") | (class(y) == "numeric")})
+num_test <- test[, .SD, .SDcols = numcols]
+
+
+cat_test <- test[, .SD, .SDcols = -numcols]
+
+# normalizing num vars
+normnum_test <- predict(PreObj, num_test)
+normnum_test <- data.table(normnum_test)
+
+# encoding categorical vars
+#ohetest <- dummyVars(~ ., data = cat_test)
+ohecat_test <- predict(ohe, cat_test)
+ohecat_test <- data.table(ohecat_test)
+ohecat_test <- select(ohecat_test, -low_occurence)
+
+# binding into a preprocessed sub-test dataset
+preproc_test <- data.table(cbind(normnum_test, ohecat_test))
+
+
+# for XGB predictions we convert preproc_test into a DMatrix
+dmat_pptest <- xgb.DMatrix(data = as.matrix(preproc_test))
+```
+
+## Creating the answer frame
+
+We'll combine the models into an ensemble one. The lasso model being the weakest one, its coefficient will be 1, then the SVM model's coefficient will be 2 and finally the XGBM model's will be 4 :
+
+
+```r
+loganswer_ridge <- predict(modfit_ridge, as.matrix(preproc_test))
+answer_ridge <- exp(loganswer_ridge)
+
+loganswer_lasso <- predict(modfit_lasso, as.matrix(preproc_test))
+answer_lasso <- exp(loganswer_lasso)
+
+loganswer_elnet <- predict(modfit_elnet, as.matrix(preproc_test))
+answer_elnet <- exp(loganswer_elnet)
+
+answer_RLE <- (answer_ridge + answer_lasso + answer_elnet) / 3
+
+loganswer_svm <- predict(modfit_svm, preproc_test)
+answer_svm <- exp(loganswer_svm)
+
+loganswer_xgbm <- predict(modfit_xgbm, dmat_pptest)
+```
+
+```
+## [19:02:22] WARNING: amalgamation/../src/objective/regression_obj.cu:170: reg:linear is now deprecated in favor of reg:squarederror.
+```
+
+```r
+answer_xgbm <- exp(loganswer_xgbm)
+
+answer <- (answer_RLE +  answer_svm + answer_xgbm) / 3
+answer_bis <- (answer_RLE + answer_xgbm) / 2
+answer_ter <- (answer_ridge + answer_elnet + answer_xgbm) / 3
+
+solution_1 <- data.frame(Id = test_ID, SalePrice = answer_RLE)
+colnames(solution_1) <- c("Id", "SalePrice")
+
+solution_1_a <- data.frame(Id = test_ID, SalePrice = answer_ridge)
+solution_1_b <- data.frame(Id = test_ID, SalePrice = answer_lasso)
+solution_1_c <- data.frame(Id = test_ID, SalePrice = answer_elnet)
+colnames(solution_1_a) <- c("Id", "SalePrice")
+colnames(solution_1_b) <- c("Id", "SalePrice")
+colnames(solution_1_c) <- c("Id", "SalePrice")
+
+solution_2 <- data.frame(Id = test_ID, SalePrice = answer_svm)
+solution_3 <- data.frame(Id = test_ID, SalePrice = answer_xgbm)
+solution_4 <- data.frame(Id = test_ID, SalePrice = answer)
+colnames(solution_4) <- c("Id", "SalePrice")
+solution_5 <- data.frame(Id = test_ID, SalePrice = answer_bis)
+colnames(solution_5) <- c("Id", "SalePrice")
+solution_6 <- data.frame(Id = test_ID, SalePrice = answer_ter)
+colnames(solution_6) <- c("Id", "SalePrice")
+```
+
+## Writing the csv file
+
+
+```r
+write.csv(solution_1, "house_price_solution_5.csv", row.names = F)
+write.csv(solution_2, "house_price_solution_6.csv", row.names = F)
+write.csv(solution_3, "house_price_solution_7.csv", row.names = F)
+write.csv(solution_4, "house_price_solution_8.csv", row.names = F)
+write.csv(solution_5, "house_price_solution_9.csv", row.names = F)
+write.csv(solution_6, "house_price_solution_10.csv", row.names = F)
+
+write.csv(solution_1_a, "house_price_solution_5a.csv", row.names = F)
+write.csv(solution_1_b, "house_price_solution_5b.csv", row.names = F)
+write.csv(solution_1_c, "house_price_solution_5c.csv", row.names = F)
+```
+
+# Score
+
+We obtained the following score for our models :
+
+- Ridge : 0.14391
+- Lasso : 0.16004
+- Elastinet : 0.14430
+- Ridge + Lasso + Elastinet : 0.14575
+- SVM : 0.23927
+- XGBM : 0.13287
+- Ensemble : 0.15334
+- Ensemble without SVM : 0.13284
+
+
+![](Housing-Price-Regression_files/figure-html/unnamed-chunk-99-1.png)<!-- -->
+
+The XGBM model is by far superior to the others and is only slightly improved when combined with Lasso, Ridge and Elastinet.
+
+The SVM model had a very high accuracy on our training set but performs poorly on the testing set. It appears that it is severely overfitting.
+
+
