@@ -110,6 +110,7 @@ Our response variable here that we want to predict is *SalePrice*. The first exp
 ```{r}
 ggplot(data = train, aes(x = SalePrice)) + geom_histogram(fill="blue")
 ```
+
 Here, we can see that *SalePrice* has a skewed distribution. We can highlight that even more with a density plot (in blue) compared to a normal distribution (in red) :
 
 ```{r}
@@ -138,7 +139,8 @@ to_factor <- names(which(sapply(train, class) == "character"))
 Similarly, while some of the integer or numeric vectors indicate a truly numeric value, such as *LotArea* which indicates the lot size in square feet, others are - again - classification variables, such as *MSSubClass*, which identifies the type of dwelling involved in the sale, with, for instance, 20 signifying "1-STORY 1946 & NEWER ALL STYLES" (see data description file). 
 We have 3 such variables : *MSSubClass*, *OverallQual*, and *OverallCond*.
 
-These will also have to be converted to factor. However, for now it suits us to keep them as numeric, so we'll convert them later on
+*OverallQual* and *OverallCond* are scores from 1 to 10 that we'll keep as numeric but *MsSubClass* is a true categorical variable that we'll convert.
+However, for now it suits us to keep it as numeric, so we'll convert it later on
 
 
 ## Dates
@@ -766,7 +768,7 @@ corrplot2(train_cor, method = "square", type = "lower",
 Now that the corrplot is made, we can convert the "false numeric" variables to factor :
 
 ```{r}
-to_factor <- c(to_factor,"MSSubClass", "OverallQual", "OverallCond")
+to_factor <- c(to_factor,"MSSubClass")
 train[, (to_factor) := lapply(.SD, as.factor), .SDcols = to_factor]
 
 ```
@@ -1264,6 +1266,29 @@ ncol(num_train)
 ncol(cat_train)
 ```
 
+## Detecting outliers in numeric variables
+
+```{r}
+num_train2 <- select(num_train, c("LotFrontage", "LotArea", "MasVnrArea", 
+                                  "BedroomAbvGr", "KitchenAbvGr", "GarageCars",
+                                  "WoodDeckSF", "OpenPorchSF", "TotalSF", 
+                                  "HouseAge"))
+numtrain_Q1s <- apply(num_train2, 2, function(x){quantile(x)[2]})
+numtrain_Q3s <- apply(num_train2, 2, function(x){quantile(x)[4]})
+numtrain_IQR <- numtrain_Q3s-numtrain_Q1s
+numtrain_outlier_range <- 1.7 * numtrain_IQR
+```
+
+```{r}
+lowoutlierlimit <-  numtrain_Q1s - numtrain_outlier_range
+islowoutlier <- apply(num_train2, 1, function(x){x < lowoutlierlimit})
+id_lowoutlier <- which(apply(islowoutlier, 2, sum) > 0)
+highoutlierlimit <-  numtrain_Q3s + numtrain_outlier_range 
+ishighoutlier <- apply(num_train2, 1, function(x){x > highoutlierlimit})
+id_highoutlier <- which(apply(ishighoutlier, 2, sum) > 0)
+id_outliers <- unique(c(id_lowoutlier, id_highoutlier))
+```
+
 ## Normalizing numerical variables
 
 ```{r}
@@ -1271,6 +1296,7 @@ PreObj <- preProcess(num_train, method = c("center", "scale"))
 normnum_train <- predict(PreObj, num_train)
 normnum_train <- data.table(normnum_train)
 ```
+
 
 
 ## Encoding categorical variables
@@ -1340,6 +1366,12 @@ model_train <- data.table(cbind(normnum_train, ohecat_train))
 model_train$logSalePrice <- log(train$SalePrice)
 ```
 
+And we remove the outliers :
+
+```{r}
+model_train <- model_train[-id_outliers, ]
+```
+
 # Model Building
 
 ## Ridge, Lasso, Elastinet
@@ -1387,15 +1419,16 @@ modfit_elnet <- glmnet(as.matrix(select(model_train, -logSalePrice)),
 Let's see what are our models' accuracies :
 
 ```{r}
-RMSE(train$SalePrice, 
+train2 <- train[-id_outliers, ]
+RMSE(train2$SalePrice, 
      exp(predict(modfit_ridge, as.matrix(select(model_train, -logSalePrice))))
-     ) / mean(train$SalePrice)
-RMSE(train$SalePrice, 
+     ) / mean(train2$SalePrice)
+RMSE(train2$SalePrice, 
      exp(predict(modfit_lasso, as.matrix(select(model_train, -logSalePrice))))
-     ) / mean(train$SalePrice)
-RMSE(train$SalePrice, 
+     ) / mean(train2$SalePrice)
+RMSE(train2$SalePrice, 
      exp(predict(modfit_elnet, as.matrix(select(model_train, -logSalePrice))))
-     ) / mean(train$SalePrice)
+     ) / mean(train2$SalePrice)
    
 ```
 
@@ -1412,14 +1445,14 @@ The process is extremely long so we'll do some parallel processing :
 ```{r, eval=F}
 library(parallel)
 library(doParallel)
-cluster1 <- makeCluster(detectCores() - 1)
+cluster1 <- makeCluster(detectCores() - 3)
 registerDoParallel(cluster1)
 
 set.seed(12345)
 tuned = tune.svm(logSalePrice ~ ., data = model_train, 
-                 gamma = c(0.01, 0.1, 1, 10),
-                 cost = c(seq(0.1, 1, by = 0.1), seq(1, 10, by = 1), seq(10,100, by=10)),
-                 coef0 = c(0.1, 1, 10),
+                 gamma = c(0.005, 0.007, 0.01, 0.013),
+                 cost = c(seq(0.01, 1, by = 0.1), seq(1, 10, by = 1), seq(10,100, by=10)),
+                 coef0 = c(0.8, 1, 1.2),
                  tunecontrol=tune.control(cross=10))
 stopCluster(cluster1)
 registerDoSEQ()
@@ -1449,9 +1482,9 @@ load(url("https://github.com/Anvil-Late/house-price/raw/master/data/modfit_svm.R
 Let's check the accuracy of our model :
 
 ```{r}
-RMSE(train$SalePrice, 
+RMSE(train2$SalePrice, 
      exp(predict(modfit_svm, select(model_train, -logSalePrice)))
-     ) / mean(train$SalePrice)
+     ) / mean(train2$SalePrice)
 ```
 
 The accuracy is even better than the lasso, ridge and elastinet models.
@@ -1464,7 +1497,7 @@ Here, our first goal is to define the proper hyperparameters to use, so we use t
 
 library(parallel)
 library(doParallel)
-cluster1 <- makeCluster(detectCores() - 1)
+cluster1 <- makeCluster(detectCores() - 3)
 registerDoParallel(cluster1)
 
 trctrl <- trainControl(method = "cv", number = 5, allowParallel = T, 
@@ -1472,8 +1505,8 @@ trctrl <- trainControl(method = "cv", number = 5, allowParallel = T,
 
 xgbGrid <- expand.grid(nrounds = 750,  
                        max_depth = seq(1, 10, by = 1),
-                       colsample_bytree = seq(0.5, 0.9, length.out = 5),
-                       eta = seq(0.01, 0.1, length.out = 4),
+                       colsample_bytree = seq(0.2, 0.6, length.out = 5),
+                       eta = seq(0.04, 0.7, length.out = 4),
                        gamma=0,
                        min_child_weight = seq(1, 5, by = 1),
                        subsample = 1
@@ -1482,7 +1515,7 @@ set.seed(69420)
 modfit_xgbm2 <- caret::train(logSalePrice ~ ., data = model_train,
                             method = "xgbTree", 
                             trControl = trctrl,
-                            tuneGrid = xgbGrid)
+                            tuneGrid = xgbGrid, verbose = F)
 stopCluster(cluster1)
 registerDoSEQ()
 
@@ -1504,11 +1537,11 @@ We set these as default hyperparameters :
 ```{r}
 xgbparam <- list(objective = "reg:linear",
                  booster = "gbtree",
-                 max_depth = 5,
-                 colsample_bytree = 0.5,
-                 eta = 0.07,
+                 max_depth = 4,
+                 colsample_bytree = 0.3,
+                 eta = 0.04,
                  gamma=0,
-                 min_child_weight = 2,
+                 min_child_weight = 3,
                  subsample = 1
                 )
 
@@ -1532,7 +1565,7 @@ dmat_train <- xgb.DMatrix(data = as.matrix(select(model_train, -logSalePrice)), 
 ```
 
 ```{r, eval=F}
-modfit_xgbm <- xgb.train(dmat_train, params = xgbparam, nrounds = 722)
+modfit_xgbm <- xgb.train(dmat_train, params = xgbparam, nrounds = 2441)
 ```
 
 ```{r, echo=F}
@@ -1542,9 +1575,9 @@ load(url("https://github.com/Anvil-Late/house-price/raw/master/data/modfit_xgbm.
 We can now check the accuracy of our model :
 
 ```{r}
-RMSE(train$SalePrice, 
+RMSE(train2$SalePrice, 
      exp(predict(modfit_xgbm, dmat_train))
-     ) / mean(train$SalePrice)
+     ) / mean(train2$SalePrice)
 ```
 The accuracy is extremely good, and way above the other models.
 
@@ -1787,6 +1820,8 @@ answer_xgbm <- exp(loganswer_xgbm)
 answer <- (answer_RLE +  answer_svm + answer_xgbm) / 3
 answer_bis <- (answer_RLE + answer_xgbm) / 2
 answer_ter <- (answer_ridge + answer_elnet + answer_xgbm) / 3
+answer_qua <- (answer_svm + answer_xgbm) / 2
+answer_quin <- (answer_lasso + answer_svm + answer_xgbm) / 3
 
 solution_1 <- data.frame(Id = test_ID, SalePrice = answer_RLE)
 colnames(solution_1) <- c("Id", "SalePrice")
@@ -1807,6 +1842,12 @@ colnames(solution_5) <- c("Id", "SalePrice")
 solution_6 <- data.frame(Id = test_ID, SalePrice = answer_ter)
 colnames(solution_6) <- c("Id", "SalePrice")
 
+solution_7 <- data.frame(Id = test_ID, SalePrice = answer_qua)
+colnames(solution_7) <- c("Id", "SalePrice")
+solution_8 <- data.frame(Id = test_ID, SalePrice = answer_quin)
+colnames(solution_8) <- c("Id", "SalePrice")
+
+
 ```
 
 ## Writing the csv file
@@ -1818,6 +1859,9 @@ write.csv(solution_3, "house_price_solution_7.csv", row.names = F)
 write.csv(solution_4, "house_price_solution_8.csv", row.names = F)
 write.csv(solution_5, "house_price_solution_9.csv", row.names = F)
 write.csv(solution_6, "house_price_solution_10.csv", row.names = F)
+write.csv(solution_7, "house_price_solution_11.csv", row.names = F)
+write.csv(solution_8, "house_price_solution_12.csv", row.names = F)
+
 
 write.csv(solution_1_a, "house_price_solution_5a.csv", row.names = F)
 write.csv(solution_1_b, "house_price_solution_5b.csv", row.names = F)
@@ -1829,14 +1873,16 @@ write.csv(solution_1_c, "house_price_solution_5c.csv", row.names = F)
 
 We obtained the following score for our models :
 
-- Ridge : 0.14391
-- Lasso : 0.16004
-- Elastinet : 0.14430
-- Ridge + Lasso + Elastinet : 0.14575
-- SVM : 0.23927
-- XGBM : 0.13287
-- Ensemble : 0.15334
+- Ridge : 0.14391 / 0.14268
+- Lasso : 0.16004 / 0.13968
+- Elastinet : 0.14430 / 0.14251
+- Ridge + Lasso + Elastinet : 0.14575 / 0.14078
+- SVM : 0.23927 / 0.12872
+- XGBM : 0.13287 / 0.13624
+- Ensemble : 0.15334 / 0.12989
 - Ensemble without SVM : 0.13284
+- XGBM + SVM : 0.12711
+- XGBM + LASSO + SVM : 0.12984
 
 
 ```{r, echo = F}
