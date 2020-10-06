@@ -143,6 +143,7 @@ ggplot(data = train, aes(x = SalePrice)) + geom_histogram(fill="blue")
 ```
 
 ![](Housing-Price-Regression_files/figure-html/unnamed-chunk-6-1.png)<!-- -->
+
 Here, we can see that *SalePrice* has a skewed distribution. We can highlight that even more with a density plot (in blue) compared to a normal distribution (in red) :
 
 
@@ -182,7 +183,8 @@ to_factor <- names(which(sapply(train, class) == "character"))
 Similarly, while some of the integer or numeric vectors indicate a truly numeric value, such as *LotArea* which indicates the lot size in square feet, others are - again - classification variables, such as *MSSubClass*, which identifies the type of dwelling involved in the sale, with, for instance, 20 signifying "1-STORY 1946 & NEWER ALL STYLES" (see data description file). 
 We have 3 such variables : *MSSubClass*, *OverallQual*, and *OverallCond*.
 
-These will also have to be converted to factor. However, for now it suits us to keep them as numeric, so we'll convert them later on
+*OverallQual* and *OverallCond* are scores from 1 to 10 that we'll keep as numeric but *MsSubClass* is a true categorical variable that we'll convert.
+However, for now it suits us to keep it as numeric, so we'll convert it later on
 
 
 ## Dates
@@ -310,7 +312,6 @@ Now, we want to see a correlation plot. This will allow us to see which variable
 
 
 
-
 ```r
 integer_cols <- sapply(train, function(y){class(y) == "integer"})
 integer_train <- train[, .SD, .SDcols = integer_cols]
@@ -329,7 +330,8 @@ high_cors <- names(which(apply(train_cor_sort, 1, function(x) abs(x)>0.5)))
 train_cor <- train_cor[high_cors, high_cors]
 
 # Corrplot2 is a modified version of corrplot that prevents labels to go out of
-# the image's frame. If you're interested, it will be on my .Rmd file
+# the image's frame. If you're interested, it will be on my github repo in the
+# "data" file
 corrplot2(train_cor, method = "square", type = "lower", 
          title = "Correlation plot between numeric variables",
          tl.col = "black", tl.cex = 0.6, 
@@ -342,13 +344,13 @@ Now that the corrplot is made, we can convert the "false numeric" variables to f
 
 
 ```r
-to_factor <- c(to_factor,"MSSubClass", "OverallQual", "OverallCond")
+to_factor <- c(to_factor,"MSSubClass")
 train[, (to_factor) := lapply(.SD, as.factor), .SDcols = to_factor]
 ```
 
 ### Correlation with response variable 
 
-The three variables with the highest correlation with *SalePrice* are *OverallQual*, *GrLivArea* and *TotalBsmtSF*.
+The variables with the highest correlation with *SalePrice* are *OverallQual*, *GrLivArea*, *GarageCars*, *GarageArea* and *TotalBsmtSF*.
 
 Let's have a look at their relationship :
 
@@ -356,7 +358,7 @@ Let's have a look at their relationship :
 
 
 ```r
-ggplot(data = train, aes(x = OverallQual, y = SalePrice)) + geom_boxplot()+
+ggplot(data = train, aes(x = factor(OverallQual), y = SalePrice)) + geom_boxplot()+
    geom_text_repel(
       aes(label = ifelse((train$OverallQual == 10 & train$SalePrice < 300000), 
                          rownames(train), '')
@@ -378,6 +380,34 @@ qplot(GrLivArea, SalePrice, data = train) + geom_smooth(method = "lm", se = F)+
 
 ![](Housing-Price-Regression_files/figure-html/unnamed-chunk-20-1.png)<!-- -->
 
+#### Garage Cars
+
+
+```r
+ggplot(data = train, aes(x = factor(GarageCars), y = SalePrice)) + 
+   geom_boxplot()+
+
+   geom_text_repel(
+      aes(label = ifelse((train$GarageCars == 1 & train$SalePrice < 60000), 
+                         rownames(train), '')))
+```
+
+![](Housing-Price-Regression_files/figure-html/unnamed-chunk-21-1.png)<!-- -->
+
+#### Garage Area
+
+
+```r
+qplot(GarageArea, SalePrice, data = train) + geom_smooth(method = "lm", se = F)+
+   geom_text_repel(
+      aes(label = ifelse((train$GarageArea > 1220 | train$SalePrice > 550000), 
+                         rownames(train), '')
+          ))
+```
+
+![](Housing-Price-Regression_files/figure-html/unnamed-chunk-22-1.png)<!-- -->
+
+
 #### Total square feet of basement area
 
 
@@ -389,7 +419,7 @@ qplot(TotalBsmtSF, SalePrice, data = train) + geom_smooth(method = "lm", se = F)
           ))
 ```
 
-![](Housing-Price-Regression_files/figure-html/unnamed-chunk-21-1.png)<!-- -->
+![](Housing-Price-Regression_files/figure-html/unnamed-chunk-23-1.png)<!-- -->
 
 
 #### First inferences
@@ -435,7 +465,7 @@ cor(train$TotRmsAbvGrd, train$GrLivArea)
 
 Moreover, GarageCars, GrLivArea and TotalBsmtSF are heavily correlated to other variables. We would therefore tend to remove them from the dataset. However, they are also heavily related to the response variable ; we might risk losing accuracy if we remove them. 
 
-Therefore, we will need to do some feature engineering at some point to combine redundant variables that are highly correlated to each other.
+Therefore, we will firstly do some feature engineering at some point to combine redundant variables that are highly correlated to each other. After that, if there are some remaining redundancies, we will drop some variables.
 
 
 # Back to NAs : imputing values
@@ -507,7 +537,7 @@ ggplot(data = train, aes(x = Neighborhood, y = LotFrontage)) + geom_boxplot() +
    theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1))
 ```
 
-![](Housing-Price-Regression_files/figure-html/unnamed-chunk-26-1.png)<!-- -->
+![](Housing-Price-Regression_files/figure-html/unnamed-chunk-28-1.png)<!-- -->
 
 We'll create a data table with contains, for each neighborhood, the mean of its *LotFrontage*, and set the *Neighborhood* values as keys to call the associated mean value when needed :
 
@@ -578,7 +608,7 @@ ggplot(data = filter(imp_rf, inc_mse >= 5),
         y = "% increase in MSE if variable is shuffled")
 ```
 
-![](Housing-Price-Regression_files/figure-html/unnamed-chunk-30-1.png)<!-- -->
+![](Housing-Price-Regression_files/figure-html/unnamed-chunk-32-1.png)<!-- -->
 
 Among the most important variables, we have a mix of categorical and numeric variables, which means that we have to use a model that properly uses large amounts of categorical data.
 
@@ -678,7 +708,7 @@ g2 <- ggplot(data = filter(train, HouseAge > 1), aes(x = HouseAge, y = SalePrice
 grid.arrange(g1, g2)
 ```
 
-![](Housing-Price-Regression_files/figure-html/unnamed-chunk-36-1.png)<!-- -->
+![](Housing-Price-Regression_files/figure-html/unnamed-chunk-38-1.png)<!-- -->
 
 The first plot takes all the houses into account whereas the second only take houses aged 2 years or more. The linear relationship is more visible in the second plot and we can see that new houses (1 year or less) follow a different pattern.
 
@@ -699,7 +729,7 @@ ggplot(data = train, aes(x = NewHouse, y = SalePrice, fill = NewHouse)) +
    scale_y_continuous(labels = comma)
 ```
 
-![](Housing-Price-Regression_files/figure-html/unnamed-chunk-38-1.png)<!-- -->
+![](Housing-Price-Regression_files/figure-html/unnamed-chunk-40-1.png)<!-- -->
 
 New houses seem to generally have a higher sale price.
 
@@ -729,7 +759,7 @@ ggplot(data = neig_sp_mean, aes(x = reorder(Neighborhood, mn), y = mn, fill = mn
    geom_text(aes(0, spmean, label = "Dataset mean sale price", vjust = -1, hjust = -0.1))
 ```
 
-![](Housing-Price-Regression_files/figure-html/unnamed-chunk-39-1.png)<!-- -->
+![](Housing-Price-Regression_files/figure-html/unnamed-chunk-41-1.png)<!-- -->
 
 We can actually see 4 categories :
 
@@ -759,7 +789,7 @@ ggplot(data = neig_sp_mean, aes(x = reorder(Neighborhood, mn), y = mn, fill = mn
    geom_text(aes(23.25, 320000, label = "Rich", vjust = -1, hjust = -0.1))
 ```
 
-![](Housing-Price-Regression_files/figure-html/unnamed-chunk-40-1.png)<!-- -->
+![](Housing-Price-Regression_files/figure-html/unnamed-chunk-42-1.png)<!-- -->
 
 
 ```r
@@ -849,7 +879,7 @@ corrplot2(train_cor2, method = "square", type = "lower",
          mar = c(0,0,2,0))
 ```
 
-![](Housing-Price-Regression_files/figure-html/unnamed-chunk-44-1.png)<!-- -->
+![](Housing-Price-Regression_files/figure-html/unnamed-chunk-46-1.png)<!-- -->
 
 These variables seem to be highly correlated :
 
@@ -891,9 +921,9 @@ In addition, the *MoSold* variable has no correlation with *SalePrice* nor with 
 train <- select(train, -c("GarageArea", "TotRmsAbvGrd", 'MoSold'))
 ```
 
-## Outliers
+## Extreme outliers
 
-We saw during the exploratory data analysis that our 364th overvation was an outlier. To improve our model's accuracy, we will remove it from the training set
+We saw during the exploratory data analysis that our 524th and 1299th overvations were extreme outliers. To improve our model's accuracy, we will remove it from the training set
 
 
 ```r
@@ -975,7 +1005,7 @@ num_train <- select(num_train, -SalePrice)
 cat_train <- train[, .SD, .SDcols = -numcols]
 ```
 
-We have 17 numeric variables and 48 categorical variables :
+Let's see how our data is divided between numeric and categorical :
 
 
 ```r
@@ -983,7 +1013,7 @@ ncol(num_train)
 ```
 
 ```
-## [1] 17
+## [1] 19
 ```
 
 ```r
@@ -991,7 +1021,36 @@ ncol(cat_train)
 ```
 
 ```
-## [1] 47
+## [1] 45
+```
+
+## Detecting remaining outliers in numeric variables
+
+Among the several models we plan on building, one of them is an SVM, which has a strong tendency to overfit its training set.
+
+Other than the already removed extreme outliers, our training set should still have other outliers, not as obvious as the ones we saw so far, but ones that could still reduce the accuracy of an SVM model. We'll detect these for future removal.
+
+
+```r
+num_train2 <- select(num_train, c("LotFrontage", "LotArea", "MasVnrArea", 
+                                  "BedroomAbvGr", "KitchenAbvGr", "GarageCars",
+                                  "WoodDeckSF", "OpenPorchSF", "TotalSF", 
+                                  "HouseAge"))
+numtrain_Q1s <- apply(num_train2, 2, function(x){quantile(x)[2]})
+numtrain_Q3s <- apply(num_train2, 2, function(x){quantile(x)[4]})
+numtrain_IQR <- numtrain_Q3s-numtrain_Q1s
+numtrain_outlier_range <- 1.7 * numtrain_IQR
+```
+
+
+```r
+lowoutlierlimit <-  numtrain_Q1s - numtrain_outlier_range
+islowoutlier <- apply(num_train2, 1, function(x){x < lowoutlierlimit})
+id_lowoutlier <- which(apply(islowoutlier, 2, sum) > 0)
+highoutlierlimit <-  numtrain_Q3s + numtrain_outlier_range 
+ishighoutlier <- apply(num_train2, 1, function(x){x > highoutlierlimit})
+id_highoutlier <- which(apply(ishighoutlier, 2, sum) > 0)
+id_outliers <- unique(c(id_lowoutlier, id_highoutlier))
 ```
 
 ## Normalizing numerical variables
@@ -1002,6 +1061,7 @@ PreObj <- preProcess(num_train, method = c("center", "scale"))
 normnum_train <- predict(PreObj, num_train)
 normnum_train <- data.table(normnum_train)
 ```
+
 
 
 ## Encoding categorical variables
@@ -1054,7 +1114,7 @@ ggplot(data = train, aes(sample = (SalePrice - mean(SalePrice)) / sd(SalePrice))
    ggtitle("Normal Q-Q Plot")
 ```
 
-![](Housing-Price-Regression_files/figure-html/unnamed-chunk-55-1.png)<!-- -->
+![](Housing-Price-Regression_files/figure-html/unnamed-chunk-59-1.png)<!-- -->
 
 Before applying any transformation, let's simply try using the log instead and see how that solves the skewness;
 
@@ -1077,7 +1137,7 @@ ggplot(data = train, aes(sample = (log(SalePrice) - mean(log(SalePrice))) / sd(l
    ggtitle("Normal Q-Q Plot")
 ```
 
-![](Housing-Price-Regression_files/figure-html/unnamed-chunk-57-1.png)<!-- -->
+![](Housing-Price-Regression_files/figure-html/unnamed-chunk-61-1.png)<!-- -->
 
 ## Final training set 
 
@@ -1089,14 +1149,18 @@ model_train <- data.table(cbind(normnum_train, ohecat_train))
 model_train$logSalePrice <- log(train$SalePrice)
 ```
 
+From that, we create a second training set in which remove the outliers :
+
+
+```r
+model_train2 <- model_train[-id_outliers, ]
+```
+
 # Model Building
 
 ## Ridge, Lasso, Elastinet
 
 Glmnet models are quite robust to outliers and deal well with data that is numeric and categorical so we'll train one with generic hyperparameters that do not penalize to much compared to simple RMSE minimization :
-
-
-
 
 
 We'll use the **cv.glmnet** function to select the best penalty factor $\lambda$ using cross-validation :
@@ -1141,7 +1205,7 @@ RMSE(train$SalePrice,
 ```
 
 ```
-## [1] 0.1527898
+## [1] 0.1524121
 ```
 
 ```r
@@ -1151,7 +1215,7 @@ RMSE(train$SalePrice,
 ```
 
 ```
-## [1] 0.1446308
+## [1] 0.1713532
 ```
 
 ```r
@@ -1161,7 +1225,7 @@ RMSE(train$SalePrice,
 ```
 
 ```
-## [1] 0.1560154
+## [1] 0.1549268
 ```
 
 The accuracies seem pretty good and equivalent for all 3 models.
@@ -1172,20 +1236,23 @@ A key feature of our data is it is relatively small, and we reduced the number o
 
 We therefore have an excellent context to build an SVM model.
 
+These models, howevere, have a severe tendency to overfit their training set. This is where our second training model comes in handy, since its worst outliers have been removed.
+
 The process is extremely long so we'll do some parallel processing :
 
 
 ```r
 library(parallel)
 library(doParallel)
-cluster1 <- makeCluster(detectCores() - 1)
+cluster1 <- makeCluster(detectCores() - 1) # Leaves one core for the OS, 
+                                           # allocates the rest for computing
 registerDoParallel(cluster1)
 
 set.seed(12345)
-tuned = tune.svm(logSalePrice ~ ., data = model_train, 
-                 gamma = c(0.01, 0.1, 1, 10),
-                 cost = c(seq(0.1, 1, by = 0.1), seq(1, 10, by = 1), seq(10,100, by=10)),
-                 coef0 = c(0.1, 1, 10),
+tuned = tune.svm(logSalePrice ~ ., data = model_train2, 
+                 gamma = c(0.005, 0.007, 0.01, 0.013),
+                 cost = c(seq(0.01, 1, by = 0.1), seq(1, 10, by = 1), seq(10,100, by=10)),
+                 coef0 = c(0.8, 1, 1.2),
                  tunecontrol=tune.control(cross=10))
 stopCluster(cluster1)
 registerDoSEQ()
@@ -1201,7 +1268,7 @@ tuned$best.parameters
 
 ```
 ##     gamma coef0 cost
-## 169  0.01   0.1    5
+## 133 0.005   0.8    2
 ```
 
 ```r
@@ -1211,20 +1278,20 @@ tuned$best.model
 ```
 ## 
 ## Call:
-## best.svm(x = logSalePrice ~ ., data = model_train, gamma = c(0.01, 
-##     0.1, 1, 10), coef0 = c(0.1, 1, 10), cost = c(seq(0.1, 1, by = 0.1), 
-##     seq(1, 10, by = 1), seq(10, 100, by = 10)), tunecontrol = tune.control(cross = 10))
+## best.svm(x = logSalePrice ~ ., data = model_train, gamma = c(0.005, 
+##     0.007, 0.01, 0.013), coef0 = c(0.8, 1, 1.2), cost = c(seq(0.01, 
+##     1, by = 0.1), seq(1, 10, by = 1), seq(10, 100, by = 10)), tunecontrol = tune.control(cross = 10))
 ## 
 ## 
 ## Parameters:
 ##    SVM-Type:  eps-regression 
 ##  SVM-Kernel:  radial 
-##        cost:  5 
-##       gamma:  0.01 
+##        cost:  2 
+##       gamma:  0.005 
 ##     epsilon:  0.1 
 ## 
 ## 
-## Number of Support Vectors:  1037
+## Number of Support Vectors:  298
 ```
 
 
@@ -1241,20 +1308,23 @@ Let's check the accuracy of our model :
 
 
 ```r
-RMSE(train$SalePrice, 
-     exp(predict(modfit_svm, select(model_train, -logSalePrice)))
-     ) / mean(train$SalePrice)
+train2 <- train[-id_outliers, ]
+RMSE(train2$SalePrice, 
+     exp(predict(modfit_svm, select(model_train2, -logSalePrice)))
+     ) / mean(train2$SalePrice)
 ```
 
 ```
-## [1] 0.0398023
+## [1] 0.09060121
 ```
 
 The accuracy is even better than the lasso, ridge and elastinet models.
 
-## XGB
+## XGBoost
 
-Here, our first goal is to define the proper hyperparameters to use, so we use the following grid to train a model fit with caret, which will then tell us what the best tune is. We will also call the parallel and doParallel packages to use parallel processing :
+XGBoost models are less subject to overfitting and are very resilient to outliers; on the contrary, they need as much data as possible since they are themselves an ensemble model. Therefore, we'll use the first training set that includes the outliers.
+
+Here, our first goal is to define the proper hyperparameters to use, so we use the following grid to train a model fit with caret, which will then tell us what the best tune is. We will also do some parallel processing here to speed up the task :
 
 
 ```r
@@ -1268,17 +1338,17 @@ trctrl <- trainControl(method = "cv", number = 5, allowParallel = T,
 
 xgbGrid <- expand.grid(nrounds = 750,  
                        max_depth = seq(1, 10, by = 1),
-                       colsample_bytree = seq(0.5, 0.9, length.out = 5),
-                       eta = seq(0.01, 0.1, length.out = 4),
+                       colsample_bytree = seq(0.2, 0.6, length.out = 5),
+                       eta = seq(0.04, 0.7, length.out = 4),
                        gamma=0,
                        min_child_weight = seq(1, 5, by = 1),
                        subsample = 1
                       )
 set.seed(69420)
-modfit_xgbm2 <- caret::train(logSalePrice ~ ., data = model_train,
+modfit_xgbm <- caret::train(logSalePrice ~ ., data = model_train,
                             method = "xgbTree", 
                             trControl = trctrl,
-                            tuneGrid = xgbGrid)
+                            tuneGrid = xgbGrid, verbose = F)
 stopCluster(cluster1)
 registerDoSEQ()
 ```
@@ -1290,12 +1360,12 @@ Let's see what the best tune for the XGB model is :
 
 
 ```r
-modfit_xgbm2$bestTune
+modfit_xgbm$bestTune
 ```
 
 ```
 ##     nrounds max_depth  eta gamma colsample_bytree min_child_weight subsample
-## 602     750         5 0.07     0              0.5                2         1
+## 400     750         6 0.04     0              0.9                5         1
 ```
 
 We set these as default hyperparameters :
@@ -1304,11 +1374,11 @@ We set these as default hyperparameters :
 ```r
 xgbparam <- list(objective = "reg:linear",
                  booster = "gbtree",
-                 max_depth = 5,
-                 colsample_bytree = 0.5,
-                 eta = 0.07,
+                 max_depth = 6,
+                 colsample_bytree = 0.9,
+                 eta = 0.04,
                  gamma=0,
-                 min_child_weight = 2,
+                 min_child_weight = 5,
                  subsample = 1
                 )
 ```
@@ -1325,31 +1395,21 @@ xgb_cv <- xgb.cv(params = xgbparam, data = as.matrix(model_train),
 ```
 
 ```
-## [19:02:06] WARNING: amalgamation/../src/objective/regression_obj.cu:170: reg:linear is now deprecated in favor of reg:squarederror.
-## [19:02:06] WARNING: amalgamation/../src/objective/regression_obj.cu:170: reg:linear is now deprecated in favor of reg:squarederror.
-## [19:02:06] WARNING: amalgamation/../src/objective/regression_obj.cu:170: reg:linear is now deprecated in favor of reg:squarederror.
-## [19:02:06] WARNING: amalgamation/../src/objective/regression_obj.cu:170: reg:linear is now deprecated in favor of reg:squarederror.
-## [19:02:06] WARNING: amalgamation/../src/objective/regression_obj.cu:170: reg:linear is now deprecated in favor of reg:squarederror.
-## [1]	train-rmse:10.723375+0.005491	test-rmse:10.722725+0.024506 
+## [10:44:47] WARNING: amalgamation/../src/objective/regression_obj.cu:174: reg:linear is now deprecated in favor of reg:squarederror.
+## [10:44:47] WARNING: amalgamation/../src/objective/regression_obj.cu:174: reg:linear is now deprecated in favor of reg:squarederror.
+## [10:44:47] WARNING: amalgamation/../src/objective/regression_obj.cu:174: reg:linear is now deprecated in favor of reg:squarederror.
+## [10:44:47] WARNING: amalgamation/../src/objective/regression_obj.cu:174: reg:linear is now deprecated in favor of reg:squarederror.
+## [10:44:47] WARNING: amalgamation/../src/objective/regression_obj.cu:174: reg:linear is now deprecated in favor of reg:squarederror.
+## [1]	train-rmse:11.068498+0.005668	test-rmse:11.067850+0.024323 
 ## Multiple eval metrics are present. Will use test_rmse for early stopping.
 ## Will train until test_rmse hasn't improved in 15 rounds.
 ## 
-## [51]	train-rmse:0.296705+0.001122	test-rmse:0.297821+0.006828 
-## [101]	train-rmse:0.025824+0.002595	test-rmse:0.042668+0.002876 
-## [151]	train-rmse:0.012986+0.001293	test-rmse:0.035003+0.002481 
-## [201]	train-rmse:0.008597+0.000780	test-rmse:0.032967+0.002404 
-## [251]	train-rmse:0.006306+0.000635	test-rmse:0.032156+0.002423 
-## [301]	train-rmse:0.004792+0.000441	test-rmse:0.031638+0.002391 
-## [351]	train-rmse:0.003785+0.000300	test-rmse:0.031294+0.002346 
-## [401]	train-rmse:0.003113+0.000242	test-rmse:0.031119+0.002365 
-## [451]	train-rmse:0.002558+0.000204	test-rmse:0.030999+0.002379 
-## [501]	train-rmse:0.002131+0.000168	test-rmse:0.030891+0.002358 
-## [551]	train-rmse:0.001796+0.000157	test-rmse:0.030822+0.002365 
-## [601]	train-rmse:0.001530+0.000131	test-rmse:0.030768+0.002367 
-## [651]	train-rmse:0.001307+0.000112	test-rmse:0.030733+0.002363 
-## [701]	train-rmse:0.001180+0.000045	test-rmse:0.030711+0.002359 
+## [51]	train-rmse:1.449050+0.000723	test-rmse:1.448811+0.010143 
+## [101]	train-rmse:0.191982+0.000283	test-rmse:0.192241+0.003436 
+## [151]	train-rmse:0.028207+0.000507	test-rmse:0.030443+0.001495 
+## [201]	train-rmse:0.009543+0.000931	test-rmse:0.016553+0.001315 
 ## Stopping. Best iteration:
-## [722]	train-rmse:0.001164+0.000042	test-rmse:0.030706+0.002361
+## [218]	train-rmse:0.008484+0.000879	test-rmse:0.016343+0.001550
 ```
 
 we now know all the parameters for a perfect xgb model fit :
@@ -1361,7 +1421,7 @@ dmat_train <- xgb.DMatrix(data = as.matrix(select(model_train, -logSalePrice)), 
 
 
 ```r
-modfit_xgbm <- xgb.train(dmat_train, params = xgbparam, nrounds = 722)
+modfit_xgbm3 <- xgb.train(dmat_train, params = xgbparam, nrounds = 218)
 ```
 
 
@@ -1371,35 +1431,35 @@ We can now check the accuracy of our model :
 
 ```r
 RMSE(train$SalePrice, 
-     exp(predict(modfit_xgbm, dmat_train))
+     exp(predict(modfit_xgbm3, dmat_train))
      ) / mean(train$SalePrice)
 ```
 
 ```
-## [19:02:20] WARNING: amalgamation/../src/objective/regression_obj.cu:170: reg:linear is now deprecated in favor of reg:squarederror.
+## [10:44:51] WARNING: amalgamation/../src/objective/regression_obj.cu:174: reg:linear is now deprecated in favor of reg:squarederror.
 ```
 
 ```
-## [1] 0.01731364
+## [1] 0.06618215
 ```
-The accuracy is extremely good, and way above the other models.
+The accuracy is extremely good, a bit below the SVM model so far but we have to keep in mind that SVM naturally tend to overfit their training sets. 
 
 Moreover, XGBoost models also provides us with feature importance. Let's see if there was any changes :
 
 
 ```r
-imp_mat <- xgb.importance(feature_names = colnames(model_train), model = modfit_xgbm)
+imp_mat <- xgb.importance(feature_names = colnames(model_train), model = modfit_xgbm3)
 ```
 
 ```
-## [19:02:20] WARNING: amalgamation/../src/objective/regression_obj.cu:170: reg:linear is now deprecated in favor of reg:squarederror.
+## [10:44:51] WARNING: amalgamation/../src/objective/regression_obj.cu:174: reg:linear is now deprecated in favor of reg:squarederror.
 ```
 
 ```r
 xgb.ggplot.importance(importance_matrix = imp_mat[1:20], rel_to_first = T)
 ```
 
-![](Housing-Price-Regression_files/figure-html/unnamed-chunk-78-1.png)<!-- -->
+![](Housing-Price-Regression_files/figure-html/unnamed-chunk-83-1.png)<!-- -->
 
 Numeric variables having more importance seems logical since categorical variables have been split into multiple dummy variables. Even so, we can see that some categorical variables keep having significant weight in our model.
 
@@ -1675,19 +1735,14 @@ answer_RLE <- (answer_ridge + answer_lasso + answer_elnet) / 3
 loganswer_svm <- predict(modfit_svm, preproc_test)
 answer_svm <- exp(loganswer_svm)
 
-loganswer_xgbm <- predict(modfit_xgbm, dmat_pptest)
-```
-
-```
-## [19:02:22] WARNING: amalgamation/../src/objective/regression_obj.cu:170: reg:linear is now deprecated in favor of reg:squarederror.
-```
-
-```r
+loganswer_xgbm <- predict(modfit_xgbm3, dmat_pptest)
 answer_xgbm <- exp(loganswer_xgbm)
 
 answer <- (answer_RLE +  answer_svm + answer_xgbm) / 3
 answer_bis <- (answer_RLE + answer_xgbm) / 2
 answer_ter <- (answer_ridge + answer_elnet + answer_xgbm) / 3
+answer_qua <- (answer_svm + answer_xgbm) / 2
+answer_quin <- (answer_lasso + answer_svm + answer_xgbm) / 3
 
 solution_1 <- data.frame(Id = test_ID, SalePrice = answer_RLE)
 colnames(solution_1) <- c("Id", "SalePrice")
@@ -1707,42 +1762,54 @@ solution_5 <- data.frame(Id = test_ID, SalePrice = answer_bis)
 colnames(solution_5) <- c("Id", "SalePrice")
 solution_6 <- data.frame(Id = test_ID, SalePrice = answer_ter)
 colnames(solution_6) <- c("Id", "SalePrice")
+
+solution_7 <- data.frame(Id = test_ID, SalePrice = answer_qua)
+colnames(solution_7) <- c("Id", "SalePrice")
+solution_8 <- data.frame(Id = test_ID, SalePrice = answer_quin)
+colnames(solution_8) <- c("Id", "SalePrice")
 ```
 
 ## Writing the csv file
 
 
 ```r
-write.csv(solution_1, "house_price_solution_5.csv", row.names = F)
-write.csv(solution_2, "house_price_solution_6.csv", row.names = F)
-write.csv(solution_3, "house_price_solution_7.csv", row.names = F)
-write.csv(solution_4, "house_price_solution_8.csv", row.names = F)
-write.csv(solution_5, "house_price_solution_9.csv", row.names = F)
-write.csv(solution_6, "house_price_solution_10.csv", row.names = F)
+write.csv(solution_1, "house_price_solution_RLE.csv", row.names = F)
+write.csv(solution_2, "house_price_solution_SVM.csv", row.names = F)
+write.csv(solution_3, "house_price_solution_XGBM.csv", row.names = F)
+write.csv(solution_4, "house_price_solution_Ensemble.csv", row.names = F)
+write.csv(solution_5, "house_price_solution_RLE_XGBM.csv", row.names = F)
+write.csv(solution_6, "house_price_solution_R-E-X.csv", row.names = F)
+write.csv(solution_7, "house_price_solution_SVM-X.csv", row.names = F)
+write.csv(solution_8, "house_price_solution_L-S-X.csv", row.names = F)
 
-write.csv(solution_1_a, "house_price_solution_5a.csv", row.names = F)
-write.csv(solution_1_b, "house_price_solution_5b.csv", row.names = F)
-write.csv(solution_1_c, "house_price_solution_5c.csv", row.names = F)
+
+write.csv(solution_1_a, "house_price_solution_R.csv", row.names = F)
+write.csv(solution_1_b, "house_price_solution_L.csv", row.names = F)
+write.csv(solution_1_c, "house_price_solution_E.csv", row.names = F)
 ```
 
 # Score
 
 We obtained the following score for our models :
 
-- Ridge : 0.14391
-- Lasso : 0.16004
-- Elastinet : 0.14430
-- Ridge + Lasso + Elastinet : 0.14575
-- SVM : 0.23927
-- XGBM : 0.13287
-- Ensemble : 0.15334
-- Ensemble without SVM : 0.13284
+- Ridge :  0.13859
+- Lasso :  0.13631
+- Elastinet : 0.13903
+- Ridge + Lasso + Elastinet *(R+L+E)* : 0.13648
+- SVM : 0.12872
+- XGBM : 0.12716
+- Ensemble : 0.12437
+
+Since the R+L+E model performs worse than the SVM and XGBM, we'll try an ensemble model without R+L+E. In addition, since the lasso model is the best of the glmnet ones, we'll also try an ensemble with XGBM, Lasso and SVM. We get the following score :
+
+- XGBM + SVM : 0.12321
+- XGBM + LASSO + SVM : 0.12485
 
 
-![](Housing-Price-Regression_files/figure-html/unnamed-chunk-99-1.png)<!-- -->
 
-The XGBM model is by far superior to the others and is only slightly improved when combined with Lasso, Ridge and Elastinet.
 
-The SVM model had a very high accuracy on our training set but performs poorly on the testing set. It appears that it is severely overfitting.
+![](Housing-Price-Regression_files/figure-html/unnamed-chunk-104-1.png)<!-- -->
+
+
 
 
