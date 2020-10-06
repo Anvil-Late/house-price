@@ -230,514 +230,8 @@ sum(sapply(train, function(y){class(y) == "integer"}))
 
 Now, we want to see a correlation plot. This will allow us to see which variables are the most correlated to *SalePrice*, and also which ones are highly correlated between each other. Ideally, we want to maximise the number of numeric variables we can use, which explains why we didn't convert some of them to factor yet.
 
-
 ```{r, echo=F}
-# This is a modified version of corrplot that prevents labels to go out of frame
-corrplot2 <- 
-   function (corr, method = c("circle", "square", "ellipse", "number", 
-                              "shade", "color", "pie"), type = c("full", "lower", "upper"), 
-             add = FALSE, col = NULL, bg = "white", title = "", is.corr = TRUE, 
-             diag = TRUE, outline = FALSE, mar = c(0, 0, 0, 0), addgrid.col = NULL, 
-             addCoef.col = NULL, addCoefasPercent = FALSE, order = c("original", 
-                                                                     "AOE", "FPC", "hclust", "alphabet"), hclust.method = c("complete", 
-                                                                                                                            "ward", "ward.D", "ward.D2", "single", "average", "mcquitty", 
-                                                                                                                            "median", "centroid"), addrect = NULL, rect.col = "black", 
-             rect.lwd = 2, tl.pos = NULL, tl.cex = 1, tl.col = "red", 
-             tl.offset = 0.4, tl.srt = 90, cl.pos = NULL, cl.lim = NULL, 
-             cl.length = NULL, cl.cex = 0.8, cl.ratio = 0.15, cl.align.text = "c", 
-             cl.offset = 0.5, number.cex = 1, number.font = 2, number.digits = NULL, 
-             addshade = c("negative", "positive", "all"), shade.lwd = 1, 
-             shade.col = "white", p.mat = NULL, sig.level = 0.05, insig = c("pch", 
-                                                                            "p-value", "blank", "n"), pch = 4, pch.col = "black", 
-             pch.cex = 3, plotCI = c("n", "square", "circle", "rect"), 
-             lowCI.mat = NULL, uppCI.mat = NULL, na.label = "?", na.label.col = "black",
-             h.ratio = FALSE,
-             ...){
-      method <- match.arg(method)
-      type <- match.arg(type)
-      order <- match.arg(order)
-      hclust.method <- match.arg(hclust.method)
-      plotCI <- match.arg(plotCI)
-      insig <- match.arg(insig)
-      if (!is.matrix(corr) && !is.data.frame(corr)) {
-         stop("Need a matrix or data frame!")
-      }
-      if (is.null(addgrid.col)) {
-         addgrid.col <- switch(method, color = NA, shade = NA, 
-                               "grey")
-      }
-      if (any(corr < cl.lim[1]) || any(corr > cl.lim[2])) {
-         stop("color limits should cover matrix")
-      }
-      if (is.null(cl.lim)) {
-         if (is.corr) {
-            cl.lim <- c(-1, 1)
-         }
-         else {
-            cl.lim <- c(min(corr), max(corr))
-         }
-      }
-      intercept <- 0
-      zoom <- 1
-      if (!is.corr) {
-         if (max(corr) * min(corr) < 0) {
-            intercept <- 0
-            zoom <- 1/max(abs(cl.lim))
-         }
-         if (min(corr) >= 0) {
-            intercept <- -cl.lim[1]
-            zoom <- 1/(diff(cl.lim))
-         }
-         if (max(corr) <= 0) {
-            intercept <- -cl.lim[2]
-            zoom <- 1/(diff(cl.lim))
-         }
-         corr <- (intercept + corr) * zoom
-      }
-      cl.lim2 <- (intercept + cl.lim) * zoom
-      int <- intercept * zoom
-      if (min(corr, na.rm = TRUE) < -1 - .Machine$double.eps^0.75 || 
-          max(corr, na.rm = TRUE) > 1 + .Machine$double.eps^0.75) {
-         stop("The matrix is not in [-1, 1]!")
-      }
-      if (is.null(col)) {
-         col <- colorRampPalette(c("#67001F", "#B2182B", "#D6604D", 
-                                   "#F4A582", "#FDDBC7", "#FFFFFF", "#D1E5F0", "#92C5DE", 
-                                   "#4393C3", "#2166AC", "#053061"))(200)
-      }
-      n <- nrow(corr)
-      m <- ncol(corr)
-      min.nm <- min(n, m)
-      ord <- seq_len(min.nm)
-      if (order != "original") {
-         ord <- corrMatOrder(corr, order = order, hclust.method = hclust.method)
-         corr <- corr[ord, ord]
-      }
-      if (is.null(rownames(corr))) {
-         rownames(corr) <- seq_len(n)
-      }
-      if (is.null(colnames(corr))) {
-         colnames(corr) <- seq_len(m)
-      }
-      apply_mat_filter <- function(mat) {
-         x <- matrix(1:n * m, n, m)
-         switch(type, upper = mat[row(x) > col(x)] <- Inf, lower = mat[row(x) < 
-                                                                          col(x)] <- Inf)
-         if (!diag) {
-            diag(mat) <- Inf
-         }
-         return(mat)
-      }
-      getPos.Dat <- function(mat) {
-         tmp <- apply_mat_filter(mat)
-         Dat <- tmp[is.finite(tmp)]
-         ind <- which(is.finite(tmp), arr.ind = TRUE)
-         Pos <- ind
-         Pos[, 1] <- ind[, 2]
-         Pos[, 2] <- -ind[, 1] + 1 + n
-         return(list(Pos, Dat))
-      }
-      getPos.NAs <- function(mat) {
-         tmp <- apply_mat_filter(mat)
-         ind <- which(is.na(tmp), arr.ind = TRUE)
-         Pos <- ind
-         Pos[, 1] <- ind[, 2]
-         Pos[, 2] <- -ind[, 1] + 1 + n
-         return(Pos)
-      }
-      Pos <- getPos.Dat(corr)[[1]]
-      n2 <- max(Pos[, 2])
-      n1 <- min(Pos[, 2])
-      nn <- n2 - n1
-      newrownames <- as.character(rownames(corr)[(n + 1 - n2):(n + 
-                                                                  1 - n1)])
-      m2 <- max(Pos[, 1])
-      m1 <- min(Pos[, 1])
-      mm <- max(1, m2 - m1)
-      newcolnames <- as.character(colnames(corr)[m1:m2])
-      DAT <- getPos.Dat(corr)[[2]]
-      len.DAT <- length(DAT)
-      assign.color <- function(dat = DAT, color = col) {
-         newcorr <- (dat + 1)/2
-         newcorr[newcorr <= 0] <- 0
-         newcorr[newcorr >= 1] <- 1 - 1e-16
-         color[floor(newcorr * length(color)) + 1]
-      }
-      col.fill <- assign.color()
-      isFALSE <- function(x) identical(x, FALSE)
-      isTRUE <- function(x) identical(x, TRUE)
-      if (isFALSE(tl.pos)) {
-         tl.pos <- "n"
-      }
-      if (is.null(tl.pos) || isTRUE(tl.pos)) {
-         tl.pos <- switch(type, full = "lt", lower = "ld", upper = "td")
-      }
-      if (isFALSE(cl.pos)) {
-         cl.pos <- "n"
-      }
-      if (is.null(cl.pos) || isTRUE(cl.pos)) {
-         cl.pos <- switch(type, full = "r", lower = "b", upper = "r")
-      }
-      if (isFALSE(outline)) {
-         col.border <- col.fill
-      }
-      if (isTRUE(outline)) {
-         col.border <- "black"
-      }
-      if (is.character(outline)) {
-         col.border <- outline
-      }
-      oldpar <- par(mar = mar, bg = "white")
-      on.exit(par(oldpar), add = TRUE)
-      if (!add) {
-         plot.new()
-         xlabwidth <- max(strwidth(newrownames, cex = tl.cex))
-         ylabwidth <- max(strwidth(newcolnames, cex = tl.cex))
-         laboffset <- strwidth("W", cex = tl.cex) * tl.offset 
-         
-         for (i in 1:50) { # 200
-            
-            xlim <- c(
-               m1 - 0.5 - xlabwidth * (grepl("l", tl.pos) | grepl("d", tl.pos)) - laboffset
-               , 
-               m2 + 0.5 + mm * cl.ratio * (cl.pos == "r") +
-                  xlabwidth * abs(cos(tl.srt * pi/180)) * grepl("d", tl.pos) 
-            ) + c(-0.35, 0.15)
-            + c(-1,0) * grepl("l", tl.pos) # margin between text and grid
-            
-            ylim <- c(
-               n1 - 0.5 - nn * cl.ratio * (cl.pos == "b")
-               , 
-               # n2 + 0.5 + ylabwidth + laboffset +
-               n2 + 0.5 + laboffset + 
-                  ylabwidth * abs(sin(tl.srt * pi/180)) * (grepl("d", tl.pos) | grepl("t", tl.pos)) 
-            ) + c(-0.15, 0.2)
-            + c(0,1) * grepl("d", tl.pos) # margin between text and grid
-            
-            plot.window(xlim, ylim,     
-                        # plot.window(xlim + c(-0.35, 0.15), ylim + c(-0.15, 0.35), 
-                        asp = 1, xaxs = "i", yaxs = "i")
-            x.tmp <- max(strwidth(newrownames, cex = tl.cex))
-            y.tmp <- max(strwidth(newcolnames, cex = tl.cex))
-            laboffset.tmp <- strwidth("W", cex = tl.cex) * tl.offset            
-            # if (min(x.tmp - xlabwidth, y.tmp - ylabwidth) < 1e-03) {
-            if (max(x.tmp - xlabwidth, y.tmp - ylabwidth, laboffset.tmp - laboffset) < 1e-03) {
-               break
-            }
-            xlabwidth <- x.tmp
-            ylabwidth <- y.tmp
-            laboffset <- laboffset.tmp
-            
-            if (i == 50) {
-               warning(c("Not been able to calculate text margin, ",
-                         "please try again with a clean new empty window using {plot.new(); dev.off()} ",
-                         "or reduce tl.cex"))
-            }
-         }
-         
-         #         if (tl.pos == "n" || tl.pos == "d") {
-         #             xlabwidth <- ylabwidth <- 0
-         #         }
-         #         if (tl.pos == "td") {
-         #             ylabwidth <- 0
-         #         }
-         #         if (tl.pos == "ld") 
-         # xlabwidth <- 0 # Modified by Seb
-         #         laboffset <- strwidth("W", cex = tl.cex) * tl.offset
-         #         xlim <- c(m1 - 0.5 - xlabwidth - laboffset, m2 + 0.5 + 
-         #             mm * cl.ratio * (cl.pos == "r") + xlabwidth * cos(tl.srt * pi/180)) + c(-0.35, 0.15)
-         #             # mm * cl.ratio * (cl.pos == "r")) + c(-0.35, 0.15))
-         #         ylim <- c(n1 - 0.5 - nn * cl.ratio * (cl.pos == "b"), 
-         #             n2 + 0.5 + ylabwidth * abs(sin(tl.srt * pi/180)) + 
-         #                 laboffset) + c(-0.15, 0.35)
-         
-         
-         if (.Platform$OS.type == "windows") {
-            grDevices::windows.options(width = 7, height = 7 * 
-                                          diff(ylim)/diff(xlim))
-         } else {
-            if (round(diff(ylim)/diff(xlim), digits = 1) != 1.0) {
-               message(paste0("Suggested windows size: height = width * ", round(diff(ylim)/diff(xlim), digits = 2)))
-            }
-         }
-         if (h.ratio) {
-            h.ratio.val <- diff(ylim)/diff(xlim)
-         }
-         
-         plot.window(xlim = xlim, ylim = ylim, asp = 1, xlab = "", 
-                     ylab = "", xaxs = "i", yaxs = "i")
-      }
-      laboffset <- strwidth("W", cex = tl.cex) * tl.offset
-      symbols(Pos, add = TRUE, inches = FALSE, squares = rep(1, 
-                                                             len.DAT), bg = bg, fg = bg)
-      if (method == "circle" && plotCI == "n") {
-         symbols(Pos, add = TRUE, inches = FALSE, circles = 0.9 * 
-                    abs(DAT)^0.5/2, fg = col.border, bg = col.fill)
-      }
-      if (method == "ellipse" && plotCI == "n") {
-         ell.dat <- function(rho, length = 99) {
-            k <- seq(0, 2 * pi, length = length)
-            x <- cos(k + acos(rho)/2)/2
-            y <- cos(k - acos(rho)/2)/2
-            return(cbind(rbind(x, y), c(NA, NA)))
-         }
-         ELL.dat <- lapply(DAT, ell.dat)
-         ELL.dat2 <- 0.85 * matrix(unlist(ELL.dat), ncol = 2, 
-                                   byrow = TRUE)
-         ELL.dat2 <- ELL.dat2 + Pos[rep(1:length(DAT), each = 100), 
-         ]
-         polygon(ELL.dat2, border = col.border, col = col.fill)
-      }
-      if (is.null(number.digits)) {
-         number.digits <- switch(addCoefasPercent + 1, 2, 0)
-      }
-      stopifnot(number.digits%%1 == 0)
-      stopifnot(number.digits >= 0)
-      if (method == "number" && plotCI == "n") {
-         text(Pos[, 1], Pos[, 2], font = number.font, col = col.fill, 
-              labels = round((DAT - int) * ifelse(addCoefasPercent, 
-                                                  100, 1)/zoom, number.digits), cex = number.cex)
-      }
-      NA_LABEL_MAX_CHARS <- 2
-      if (any(is.na(corr)) && is.character(na.label)) {
-         PosNA <- getPos.NAs(corr)
-         if (na.label == "square") {
-            symbols(PosNA, add = TRUE, inches = FALSE, squares = rep(1, 
-                                                                     nrow(PosNA)), bg = na.label.col, fg = na.label.col)
-         }
-         else if (nchar(na.label) %in% 1:NA_LABEL_MAX_CHARS) {
-            symbols(PosNA, add = TRUE, inches = FALSE, squares = rep(1, 
-                                                                     nrow(PosNA)), fg = bg, bg = bg)
-            text(PosNA[, 1], PosNA[, 2], font = number.font, 
-                 col = na.label.col, labels = na.label, cex = number.cex, 
-                 ...)
-         }
-         else {
-            stop(paste("Maximum number of characters for NA label is:", 
-                       NA_LABEL_MAX_CHARS))
-         }
-      }
-      if (method == "pie" && plotCI == "n") {
-         symbols(Pos, add = TRUE, inches = FALSE, circles = rep(0.5, 
-                                                                len.DAT) * 0.85)
-         pie.dat <- function(theta, length = 100) {
-            k <- seq(pi/2, pi/2 - theta, length = 0.5 * length * 
-                        abs(theta)/pi)
-            x <- c(0, cos(k)/2, 0)
-            y <- c(0, sin(k)/2, 0)
-            cbind(rbind(x, y), c(NA, NA))
-         }
-         PIE.dat <- lapply(DAT * 2 * pi, pie.dat)
-         len.pie <- unlist(lapply(PIE.dat, length))/2
-         PIE.dat2 <- 0.85 * matrix(unlist(PIE.dat), ncol = 2, 
-                                   byrow = TRUE)
-         PIE.dat2 <- PIE.dat2 + Pos[rep(1:length(DAT), len.pie), 
-         ]
-         polygon(PIE.dat2, border = "black", col = col.fill)
-      }
-      if (method == "shade" && plotCI == "n") {
-         addshade <- match.arg(addshade)
-         symbols(Pos, add = TRUE, inches = FALSE, squares = rep(1, 
-                                                                len.DAT), bg = col.fill, fg = addgrid.col)
-         shade.dat <- function(w) {
-            x <- w[1]
-            y <- w[2]
-            rho <- w[3]
-            x1 <- x - 0.5
-            x2 <- x + 0.5
-            y1 <- y - 0.5
-            y2 <- y + 0.5
-            dat <- NA
-            if ((addshade == "positive" || addshade == "all") && 
-                rho > 0) {
-               dat <- cbind(c(x1, x1, x), c(y, y1, y1), c(x, 
-                                                          x2, x2), c(y2, y2, y))
-            }
-            if ((addshade == "negative" || addshade == "all") && 
-                rho < 0) {
-               dat <- cbind(c(x1, x1, x), c(y, y2, y2), c(x, 
-                                                          x2, x2), c(y1, y1, y))
-            }
-            return(t(dat))
-         }
-         pos_corr <- rbind(cbind(Pos, DAT))
-         pos_corr2 <- split(pos_corr, 1:nrow(pos_corr))
-         SHADE.dat <- matrix(na.omit(unlist(lapply(pos_corr2, 
-                                                   shade.dat))), byrow = TRUE, ncol = 4)
-         segments(SHADE.dat[, 1], SHADE.dat[, 2], SHADE.dat[, 
-                                                            3], SHADE.dat[, 4], col = shade.col, lwd = shade.lwd)
-      }
-      if (method == "square" && plotCI == "n") {
-         symbols(Pos, add = TRUE, inches = FALSE, squares = abs(DAT)^0.5, 
-                 bg = col.fill, fg = col.border)
-      }
-      if (method == "color" && plotCI == "n") {
-         symbols(Pos, add = TRUE, inches = FALSE, squares = rep(1, 
-                                                                len.DAT), bg = col.fill, fg = col.border)
-      }
-      symbols(Pos, add = TRUE, inches = FALSE, bg = NA, squares = rep(1, 
-                                                                      len.DAT), fg = addgrid.col)
-      if (plotCI != "n") {
-         if (is.null(lowCI.mat) || is.null(uppCI.mat)) {
-            stop("Need lowCI.mat and uppCI.mat!")
-         }
-         if (order != "original") {
-            lowCI.mat <- lowCI.mat[ord, ord]
-            uppCI.mat <- uppCI.mat[ord, ord]
-         }
-         pos.lowNew <- getPos.Dat(lowCI.mat)[[1]]
-         lowNew <- getPos.Dat(lowCI.mat)[[2]]
-         pos.uppNew <- getPos.Dat(uppCI.mat)[[1]]
-         uppNew <- getPos.Dat(uppCI.mat)[[2]]
-         if (!method %in% c("circle", "square")) {
-            stop("method shoud be circle or square if draw confidence interval!")
-         }
-         k1 <- (abs(uppNew) > abs(lowNew))
-         bigabs <- uppNew
-         bigabs[which(!k1)] <- lowNew[!k1]
-         smallabs <- lowNew
-         smallabs[which(!k1)] <- uppNew[!k1]
-         sig <- sign(uppNew * lowNew)
-         color_bigabs <- col[ceiling((bigabs + 1) * length(col)/2)]
-         color_smallabs <- col[ceiling((smallabs + 1) * length(col)/2)]
-         if (plotCI == "circle") {
-            symbols(pos.uppNew[, 1], pos.uppNew[, 2], add = TRUE, 
-                    inches = FALSE, circles = 0.95 * abs(bigabs)^0.5/2, 
-                    bg = ifelse(sig > 0, col.fill, color_bigabs), 
-                    fg = ifelse(sig > 0, col.fill, color_bigabs))
-            symbols(pos.lowNew[, 1], pos.lowNew[, 2], add = TRUE, 
-                    inches = FALSE, circles = 0.95 * abs(smallabs)^0.5/2, 
-                    bg = ifelse(sig > 0, bg, color_smallabs), fg = ifelse(sig > 
-                                                                             0, col.fill, color_smallabs))
-         }
-         if (plotCI == "square") {
-            symbols(pos.uppNew[, 1], pos.uppNew[, 2], add = TRUE, 
-                    inches = FALSE, squares = abs(bigabs)^0.5, bg = ifelse(sig > 
-                                                                              0, col.fill, color_bigabs), fg = ifelse(sig > 
-                                                                                                                         0, col.fill, color_bigabs))
-            symbols(pos.lowNew[, 1], pos.lowNew[, 2], add = TRUE, 
-                    inches = FALSE, squares = abs(smallabs)^0.5, 
-                    bg = ifelse(sig > 0, bg, color_smallabs), fg = ifelse(sig > 
-                                                                             0, col.fill, color_smallabs))
-         }
-         if (plotCI == "rect") {
-            rect.width <- 0.25
-            rect(pos.uppNew[, 1] - rect.width, pos.uppNew[, 2] + 
-                    smallabs/2, pos.uppNew[, 1] + rect.width, pos.uppNew[, 
-                                                                         2] + bigabs/2, col = col.fill, border = col.fill)
-            segments(pos.lowNew[, 1] - rect.width, pos.lowNew[, 
-                                                              2] + DAT/2, pos.lowNew[, 1] + rect.width, pos.lowNew[, 
-                                                                                                                   2] + DAT/2, col = "black", lwd = 1)
-            segments(pos.uppNew[, 1] - rect.width, pos.uppNew[, 
-                                                              2] + uppNew/2, pos.uppNew[, 1] + rect.width, 
-                     pos.uppNew[, 2] + uppNew/2, col = "black", lwd = 1)
-            segments(pos.lowNew[, 1] - rect.width, pos.lowNew[, 
-                                                              2] + lowNew/2, pos.lowNew[, 1] + rect.width, 
-                     pos.lowNew[, 2] + lowNew/2, col = "black", lwd = 1)
-            segments(pos.lowNew[, 1] - 0.5, pos.lowNew[, 2], 
-                     pos.lowNew[, 1] + 0.5, pos.lowNew[, 2], col = "grey70", 
-                     lty = 3)
-         }
-      }
-      if (!is.null(p.mat) && insig != "n") {
-         if (order != "original") {
-            p.mat <- p.mat[ord, ord]
-         }
-         pos.pNew <- getPos.Dat(p.mat)[[1]]
-         pNew <- getPos.Dat(p.mat)[[2]]
-         ind.p <- which(pNew > sig.level)
-         p_inSig <- length(ind.p) > 0
-         if (insig == "pch" && p_inSig) {
-            points(pos.pNew[, 1][ind.p], pos.pNew[, 2][ind.p], 
-                   pch = pch, col = pch.col, cex = pch.cex, lwd = 2)
-         }
-         if (insig == "p-value" && p_inSig) {
-            text(pos.pNew[, 1][ind.p], pos.pNew[, 2][ind.p], 
-                 round(pNew[ind.p], 2), col = pch.col)
-         }
-         if (insig == "blank" && p_inSig) {
-            symbols(pos.pNew[, 1][ind.p], pos.pNew[, 2][ind.p], 
-                    inches = FALSE, squares = rep(1, length(pos.pNew[, 
-                                                                     1][ind.p])), fg = addgrid.col, bg = bg, add = TRUE)
-         }
-      }
-      if (cl.pos != "n") {
-         colRange <- assign.color(dat = cl.lim2)
-         ind1 <- which(col == colRange[1])
-         ind2 <- which(col == colRange[2])
-         colbar <- col[ind1:ind2]
-         if (is.null(cl.length)) {
-            cl.length <- ifelse(length(colbar) > 20, 11, length(colbar) + 
-                                   1)
-         }
-         labels <- seq(cl.lim[1], cl.lim[2], length = cl.length)
-         if (cl.pos == "r") {
-            vertical <- TRUE
-            xlim <- c(m2 + 0.5 + mm * 0.02, m2 + 0.5 + mm * cl.ratio)
-            ylim <- c(n1 - 0.5, n2 + 0.5)
-         }
-         if (cl.pos == "b") {
-            vertical <- FALSE
-            xlim <- c(m1 - 0.5, m2 + 0.5)
-            ylim <- c(n1 - 0.5 - nn * cl.ratio, n1 - 0.5 - nn * 
-                         0.02)
-         }
-         colorlegend(colbar = colbar, labels = round(labels, 2), 
-                     offset = cl.offset, ratio.colbar = 0.3, cex = cl.cex, 
-                     xlim = xlim, ylim = ylim, vertical = vertical, align = cl.align.text)
-      }
-      if (tl.pos != "n") {
-         pos.xlabel <- cbind(m1:m2, n2 + 0.5 + laboffset)
-         pos.ylabel <- cbind(m1 - 0.5, n2:n1)
-         if (tl.pos == "td") {
-            if (type != "upper") {
-               stop("type should be \"upper\" if tl.pos is \"dt\".")
-            }
-            pos.ylabel <- cbind(m1:(m1 + nn) - 0.5, n2:n1)
-         }
-         if (tl.pos == "ld") {
-            if (type != "lower") {
-               stop("type should be \"lower\" if tl.pos is \"ld\".")
-            }
-            pos.xlabel <- cbind(m1:m2, n2:(n2 - mm) + 0.5 + laboffset)
-         }
-         if (tl.pos == "d") {
-            pos.ylabel <- cbind(m1:(m1 + nn) - 0.5, n2:n1)
-            pos.ylabel <- pos.ylabel[1:min(n, m), ]
-            symbols(pos.ylabel[, 1] + 0.5, pos.ylabel[, 2], add = TRUE, 
-                    bg = bg, fg = addgrid.col, inches = FALSE, squares = rep(1, 
-                                                                             length(pos.ylabel[, 1])))
-            text(pos.ylabel[, 1] + 0.5, pos.ylabel[, 2], newcolnames[1:min(n, 
-                                                                           m)], col = tl.col, cex = tl.cex, ...)
-         }
-         else {
-            text(pos.xlabel[, 1], pos.xlabel[, 2], newcolnames, 
-                 srt = tl.srt, adj = ifelse(tl.srt == 0, c(0.5, 
-                                                           0), c(0, 0)), col = tl.col, cex = tl.cex, offset = tl.offset, 
-                 ...)
-            text(pos.ylabel[, 1], pos.ylabel[, 2], newrownames, 
-                 col = tl.col, cex = tl.cex, pos = 2, offset = tl.offset, 
-                 ...)
-         }
-      }
-      title(title, ...)
-      if (!is.null(addCoef.col) && method != "number") {
-         text(Pos[, 1], Pos[, 2], col = addCoef.col, labels = round((DAT - 
-                                                                        int) * ifelse(addCoefasPercent, 100, 1)/zoom, number.digits), 
-              cex = number.cex, font = number.font)
-      }
-      if (type == "full" && plotCI == "n" && !is.null(addgrid.col)) {
-         rect(m1 - 0.5, n1 - 0.5, m2 + 0.5, n2 + 0.5, border = addgrid.col)
-      }
-      if (!is.null(addrect) && order == "hclust" && type == "full") {
-         corrRect.hclust(corr, k = addrect, method = hclust.method, 
-                         col = rect.col, lwd = rect.lwd)
-      }
-      invisible(corr)
-      if (h.ratio) {
-         return(h.ratio = h.ratio.val)
-      }
-   }
+load(url("https://github.com/Anvil-Late/house-price/raw/master/data/corrplot2.RData"))
 ```
 
 ```{r}
@@ -758,7 +252,8 @@ high_cors <- names(which(apply(train_cor_sort, 1, function(x) abs(x)>0.5)))
 train_cor <- train_cor[high_cors, high_cors]
 
 # Corrplot2 is a modified version of corrplot that prevents labels to go out of
-# the image's frame. If you're interested, it will be on my .Rmd file
+# the image's frame. If you're interested, it will be on my github repo in the
+# "data" file
 corrplot2(train_cor, method = "square", type = "lower", 
          title = "Correlation plot between numeric variables",
          tl.col = "black", tl.cex = 0.6, 
@@ -775,14 +270,14 @@ train[, (to_factor) := lapply(.SD, as.factor), .SDcols = to_factor]
 
 ### Correlation with response variable 
 
-The three variables with the highest correlation with *SalePrice* are *OverallQual*, *GrLivArea* and *TotalBsmtSF*.
+The variables with the highest correlation with *SalePrice* are *OverallQual*, *GrLivArea*, *GarageCars*, *GarageArea* and *TotalBsmtSF*.
 
 Let's have a look at their relationship :
 
 #### Overall Quality
 
 ```{r}
-ggplot(data = train, aes(x = OverallQual, y = SalePrice)) + geom_boxplot()+
+ggplot(data = train, aes(x = factor(OverallQual), y = SalePrice)) + geom_boxplot()+
    geom_text_repel(
       aes(label = ifelse((train$OverallQual == 10 & train$SalePrice < 300000), 
                          rownames(train), '')
@@ -798,6 +293,30 @@ qplot(GrLivArea, SalePrice, data = train) + geom_smooth(method = "lm", se = F)+
                          rownames(train), '')
           ))
 ```
+
+#### Garage Cars
+
+```{r}
+ggplot(data = train, aes(x = factor(GarageCars), y = SalePrice)) + 
+   geom_boxplot()+
+
+   geom_text_repel(
+      aes(label = ifelse((train$GarageCars == 1 & train$SalePrice < 60000), 
+                         rownames(train), '')))
+
+
+```
+
+#### Garage Area
+
+```{r}
+qplot(GarageArea, SalePrice, data = train) + geom_smooth(method = "lm", se = F)+
+   geom_text_repel(
+      aes(label = ifelse((train$GarageArea > 1220 | train$SalePrice > 550000), 
+                         rownames(train), '')
+          ))
+```
+
 
 #### Total square feet of basement area
 
@@ -834,7 +353,7 @@ cor(train$TotRmsAbvGrd, train$GrLivArea)
 
 Moreover, GarageCars, GrLivArea and TotalBsmtSF are heavily correlated to other variables. We would therefore tend to remove them from the dataset. However, they are also heavily related to the response variable ; we might risk losing accuracy if we remove them. 
 
-Therefore, we will need to do some feature engineering at some point to combine redundant variables that are highly correlated to each other.
+Therefore, we will firstly do some feature engineering at some point to combine redundant variables that are highly correlated to each other. After that, if there are some remaining redundancies, we will drop some variables.
 
 
 # Back to NAs : imputing values
@@ -1177,9 +696,9 @@ In addition, the *MoSold* variable has no correlation with *SalePrice* nor with 
 train <- select(train, -c("GarageArea", "TotRmsAbvGrd", 'MoSold'))
 ```
 
-## Outliers
+## Extreme outliers
 
-We saw during the exploratory data analysis that our 364th overvation was an outlier. To improve our model's accuracy, we will remove it from the training set
+We saw during the exploratory data analysis that our 524th and 1299th overvations were extreme outliers. To improve our model's accuracy, we will remove it from the training set
 
 ```{r}
 train <- train[-c(524, 1299), ]
@@ -1259,14 +778,18 @@ num_train <- select(num_train, -SalePrice)
 cat_train <- train[, .SD, .SDcols = -numcols]
 ```
 
-We have 17 numeric variables and 48 categorical variables :
+Let's see how our data is divided between numeric and categorical :
 
 ```{r}
 ncol(num_train)
 ncol(cat_train)
 ```
 
-## Detecting outliers in numeric variables
+## Detecting remaining outliers in numeric variables
+
+Among the several models we plan on building, one of them is an SVM, which has a strong tendency to overfit its training set.
+
+Other than the already removed extreme outliers, our training set should still have other outliers, not as obvious as the ones we saw so far, but ones that could still reduce the accuracy of an SVM model. We'll detect these for future removal.
 
 ```{r}
 num_train2 <- select(num_train, c("LotFrontage", "LotArea", "MasVnrArea", 
@@ -1366,10 +889,10 @@ model_train <- data.table(cbind(normnum_train, ohecat_train))
 model_train$logSalePrice <- log(train$SalePrice)
 ```
 
-And we remove the outliers :
+From that, we create a second training set in which remove the outliers :
 
 ```{r}
-model_train <- model_train[-id_outliers, ]
+model_train2 <- model_train[-id_outliers, ]
 ```
 
 # Model Building
@@ -1377,9 +900,6 @@ model_train <- model_train[-id_outliers, ]
 ## Ridge, Lasso, Elastinet
 
 Glmnet models are quite robust to outliers and deal well with data that is numeric and categorical so we'll train one with generic hyperparameters that do not penalize to much compared to simple RMSE minimization :
-
-
-
 
 
 We'll use the **cv.glmnet** function to select the best penalty factor $\lambda$ using cross-validation :
@@ -1419,16 +939,16 @@ modfit_elnet <- glmnet(as.matrix(select(model_train, -logSalePrice)),
 Let's see what are our models' accuracies :
 
 ```{r}
-train2 <- train[-id_outliers, ]
-RMSE(train2$SalePrice, 
+
+RMSE(train$SalePrice, 
      exp(predict(modfit_ridge, as.matrix(select(model_train, -logSalePrice))))
-     ) / mean(train2$SalePrice)
-RMSE(train2$SalePrice, 
+     ) / mean(train$SalePrice)
+RMSE(train$SalePrice, 
      exp(predict(modfit_lasso, as.matrix(select(model_train, -logSalePrice))))
-     ) / mean(train2$SalePrice)
-RMSE(train2$SalePrice, 
+     ) / mean(train$SalePrice)
+RMSE(train$SalePrice, 
      exp(predict(modfit_elnet, as.matrix(select(model_train, -logSalePrice))))
-     ) / mean(train2$SalePrice)
+     ) / mean(train$SalePrice)
    
 ```
 
@@ -1440,16 +960,19 @@ A key feature of our data is it is relatively small, and we reduced the number o
 
 We therefore have an excellent context to build an SVM model.
 
+These models, howevere, have a severe tendency to overfit their training set. This is where our second training model comes in handy, since its worst outliers have been removed.
+
 The process is extremely long so we'll do some parallel processing :
 
 ```{r, eval=F}
 library(parallel)
 library(doParallel)
-cluster1 <- makeCluster(detectCores() - 3)
+cluster1 <- makeCluster(detectCores() - 1) # Leaves one core for the OS, 
+                                           # allocates the rest for computing
 registerDoParallel(cluster1)
 
 set.seed(12345)
-tuned = tune.svm(logSalePrice ~ ., data = model_train, 
+tuned = tune.svm(logSalePrice ~ ., data = model_train2, 
                  gamma = c(0.005, 0.007, 0.01, 0.013),
                  cost = c(seq(0.01, 1, by = 0.1), seq(1, 10, by = 1), seq(10,100, by=10)),
                  coef0 = c(0.8, 1, 1.2),
@@ -1482,22 +1005,25 @@ load(url("https://github.com/Anvil-Late/house-price/raw/master/data/modfit_svm.R
 Let's check the accuracy of our model :
 
 ```{r}
+train2 <- train[-id_outliers, ]
 RMSE(train2$SalePrice, 
-     exp(predict(modfit_svm, select(model_train, -logSalePrice)))
+     exp(predict(modfit_svm, select(model_train2, -logSalePrice)))
      ) / mean(train2$SalePrice)
 ```
 
 The accuracy is even better than the lasso, ridge and elastinet models.
 
-## XGB
+## XGBoost
 
-Here, our first goal is to define the proper hyperparameters to use, so we use the following grid to train a model fit with caret, which will then tell us what the best tune is. We will also call the parallel and doParallel packages to use parallel processing :
+XGBoost models are less subject to overfitting and are very resilient to outliers; on the contrary, they need as much data as possible since they are themselves an ensemble model. Therefore, we'll use the first training set that includes the outliers.
+
+Here, our first goal is to define the proper hyperparameters to use, so we use the following grid to train a model fit with caret, which will then tell us what the best tune is. We will also do some parallel processing here to speed up the task :
 
 ```{r, eval=F}
 
 library(parallel)
 library(doParallel)
-cluster1 <- makeCluster(detectCores() - 3)
+cluster1 <- makeCluster(detectCores() - 1)
 registerDoParallel(cluster1)
 
 trctrl <- trainControl(method = "cv", number = 5, allowParallel = T, 
@@ -1512,7 +1038,7 @@ xgbGrid <- expand.grid(nrounds = 750,
                        subsample = 1
                       )
 set.seed(69420)
-modfit_xgbm2 <- caret::train(logSalePrice ~ ., data = model_train,
+modfit_xgbm <- caret::train(logSalePrice ~ ., data = model_train,
                             method = "xgbTree", 
                             trControl = trctrl,
                             tuneGrid = xgbGrid, verbose = F)
@@ -1523,13 +1049,13 @@ registerDoSEQ()
 
 
 ```{r, echo=F}
-load(url("https://github.com/Anvil-Late/house-price/raw/master/data/modfit_xgbm2.RData"))
+load(url("https://github.com/Anvil-Late/house-price/raw/master/data/modfit_xgbm.RData"))
 ```
 
 Let's see what the best tune for the XGB model is :
 
 ```{r}
-modfit_xgbm2$bestTune
+modfit_xgbm$bestTune
 ```
 
 We set these as default hyperparameters :
@@ -1537,11 +1063,11 @@ We set these as default hyperparameters :
 ```{r}
 xgbparam <- list(objective = "reg:linear",
                  booster = "gbtree",
-                 max_depth = 4,
-                 colsample_bytree = 0.3,
+                 max_depth = 6,
+                 colsample_bytree = 0.9,
                  eta = 0.04,
                  gamma=0,
-                 min_child_weight = 3,
+                 min_child_weight = 5,
                  subsample = 1
                 )
 
@@ -1565,26 +1091,26 @@ dmat_train <- xgb.DMatrix(data = as.matrix(select(model_train, -logSalePrice)), 
 ```
 
 ```{r, eval=F}
-modfit_xgbm <- xgb.train(dmat_train, params = xgbparam, nrounds = 2441)
+modfit_xgbm3 <- xgb.train(dmat_train, params = xgbparam, nrounds = 218)
 ```
 
 ```{r, echo=F}
-load(url("https://github.com/Anvil-Late/house-price/raw/master/data/modfit_xgbm.RData"))
+load(url("https://github.com/Anvil-Late/house-price/raw/master/data/modfit_xgbm3.RData"))
 ```
 
 We can now check the accuracy of our model :
 
 ```{r}
-RMSE(train2$SalePrice, 
-     exp(predict(modfit_xgbm, dmat_train))
-     ) / mean(train2$SalePrice)
+RMSE(train$SalePrice, 
+     exp(predict(modfit_xgbm3, dmat_train))
+     ) / mean(train$SalePrice)
 ```
-The accuracy is extremely good, and way above the other models.
+The accuracy is extremely good, a bit below the SVM model so far but we have to keep in mind that SVM naturally tend to overfit their training sets. 
 
 Moreover, XGBoost models also provides us with feature importance. Let's see if there was any changes :
 
 ```{r}
-imp_mat <- xgb.importance(feature_names = colnames(model_train), model = modfit_xgbm)
+imp_mat <- xgb.importance(feature_names = colnames(model_train), model = modfit_xgbm3)
 xgb.ggplot.importance(importance_matrix = imp_mat[1:20], rel_to_first = T)
 ```
 
@@ -1799,7 +1325,7 @@ dmat_pptest <- xgb.DMatrix(data = as.matrix(preproc_test))
 
 We'll combine the models into an ensemble one. The lasso model being the weakest one, its coefficient will be 1, then the SVM model's coefficient will be 2 and finally the XGBM model's will be 4 :
 
-```{r}
+```{r, eval = F}
 loganswer_ridge <- predict(modfit_ridge, as.matrix(preproc_test))
 answer_ridge <- exp(loganswer_ridge)
 
@@ -1814,7 +1340,7 @@ answer_RLE <- (answer_ridge + answer_lasso + answer_elnet) / 3
 loganswer_svm <- predict(modfit_svm, preproc_test)
 answer_svm <- exp(loganswer_svm)
 
-loganswer_xgbm <- predict(modfit_xgbm, dmat_pptest)
+loganswer_xgbm <- predict(modfit_xgbm3, dmat_pptest)
 answer_xgbm <- exp(loganswer_xgbm)
 
 answer <- (answer_RLE +  answer_svm + answer_xgbm) / 3
@@ -1853,19 +1379,19 @@ colnames(solution_8) <- c("Id", "SalePrice")
 ## Writing the csv file
 
 ```{r, eval=F}
-write.csv(solution_1, "house_price_solution_5.csv", row.names = F)
-write.csv(solution_2, "house_price_solution_6.csv", row.names = F)
-write.csv(solution_3, "house_price_solution_7.csv", row.names = F)
-write.csv(solution_4, "house_price_solution_8.csv", row.names = F)
-write.csv(solution_5, "house_price_solution_9.csv", row.names = F)
-write.csv(solution_6, "house_price_solution_10.csv", row.names = F)
-write.csv(solution_7, "house_price_solution_11.csv", row.names = F)
-write.csv(solution_8, "house_price_solution_12.csv", row.names = F)
+write.csv(solution_1, "house_price_solution_RLE.csv", row.names = F)
+write.csv(solution_2, "house_price_solution_SVM.csv", row.names = F)
+write.csv(solution_3, "house_price_solution_XGBM.csv", row.names = F)
+write.csv(solution_4, "house_price_solution_Ensemble.csv", row.names = F)
+write.csv(solution_5, "house_price_solution_RLE_XGBM.csv", row.names = F)
+write.csv(solution_6, "house_price_solution_R-E-X.csv", row.names = F)
+write.csv(solution_7, "house_price_solution_SVM-X.csv", row.names = F)
+write.csv(solution_8, "house_price_solution_L-S-X.csv", row.names = F)
 
 
-write.csv(solution_1_a, "house_price_solution_5a.csv", row.names = F)
-write.csv(solution_1_b, "house_price_solution_5b.csv", row.names = F)
-write.csv(solution_1_c, "house_price_solution_5c.csv", row.names = F)
+write.csv(solution_1_a, "house_price_solution_R.csv", row.names = F)
+write.csv(solution_1_b, "house_price_solution_L.csv", row.names = F)
+write.csv(solution_1_c, "house_price_solution_E.csv", row.names = F)
 
 ```
 
@@ -1873,26 +1399,30 @@ write.csv(solution_1_c, "house_price_solution_5c.csv", row.names = F)
 
 We obtained the following score for our models :
 
-- Ridge : 0.14391 / 0.14268
-- Lasso : 0.16004 / 0.13968
-- Elastinet : 0.14430 / 0.14251
-- Ridge + Lasso + Elastinet : 0.14575 / 0.14078
-- SVM : 0.23927 / 0.12872
-- XGBM : 0.13287 / 0.13624
-- Ensemble : 0.15334 / 0.12989
-- Ensemble without SVM : 0.13284
-- XGBM + SVM : 0.12711
-- XGBM + LASSO + SVM : 0.12984
+- Ridge :  0.13859
+- Lasso :  0.13631
+- Elastinet : 0.13903
+- Ridge + Lasso + Elastinet *(R+L+E)* : 0.13648
+- SVM : 0.12872
+- XGBM : 0.12716
+- Ensemble : 0.12437
+
+Since the R+L+E model performs worse than the SVM and XGBM, we'll try an ensemble model without R+L+E. In addition, since the lasso model is the best of the glmnet ones, we'll also try an ensemble with XGBM, Lasso and SVM. We get the following score :
+
+- XGBM + SVM : 0.12321
+- XGBM + LASSO + SVM : 0.12485
+
+
 
 
 ```{r, echo = F}
 scoring <- data.table(
    model = factor(c(
-      "Ridge", "Lasso", "Elastinet", "Ridge + Lasso + Elnet",
-      "SVM", "XGBM", "Ensemble", "Ensemble w/o SVM"
+      "1.Ridge", "2.Lasso", "3.Elastinet", "4.Ridge + Lasso + Elnet",
+      "5.SVM", "6.XGBM", "7.Ensemble", "8.XGBM + SVM", "9.XGBM + Lasso + SVM"
    )),
-   accuracy = c(1-0.14391, 1-0.16004, 1-0.14430, 1-0.14575, 1-0.23927, 
-                1-0.13287, 1-0.15334, 1-0.13284)
+   accuracy = c(1-0.13859, 1-0.13631, 1-0.13903, 1-0.13648, 1-0.12872, 
+                1-0.12716, 1-0.12437, 1-0.12321, 1-0.12485)
 )
 
 ggplot(data = scoring, aes(x = model, y = accuracy, fill = model)) + 
@@ -1901,19 +1431,19 @@ ggplot(data = scoring, aes(x = model, y = accuracy, fill = model)) +
          legend.position = "none")+
    labs(x = "Model", 
         y = "Accuracy")+
-   geom_text(aes(1, 0.25, label = "Score : 0.14430", vjust = 0, hjust = 0, angle = 90))+
-   geom_text(aes(2, 0.25, label = "Score : 0.15334", vjust = 0, hjust = 0, angle = 90))+
-   geom_text(aes(3, 0.25, label = "Score : 0.13284 (best)", vjust = 0, hjust = 0, angle = 90))+
-   geom_text(aes(4, 0.25, label = "Score : 0.16004", vjust = 0, hjust = 0, angle = 90))+
-   geom_text(aes(5, 0.25, label = "Score : 0.14391", vjust = 0, hjust = 0, angle = 90))+
-   geom_text(aes(6, 0.25, label = "Score : 0.14575", vjust = 0, hjust = 0, angle = 90))+
-   geom_text(aes(7, 0.25, label = "Score : 0.23927", vjust = 0, hjust = 0, angle = 90))+
-   geom_text(aes(8, 0.25, label = "Score : 0.13287", vjust = 0, hjust = 0, angle = 90))
+   coord_cartesian(ylim = c(0.70,0.90))+
+   geom_text(aes(1, 0.75, label = "Score : 0.13859", angle = 90))+
+   geom_text(aes(2, 0.75, label = "Score : 0.13631", angle = 90))+
+   geom_text(aes(3, 0.75, label = "Score : 0.13903", angle = 90))+
+   geom_text(aes(4, 0.75, label = "Score : 0.13648", angle = 90))+
+   geom_text(aes(5, 0.75, label = "Score : 0.12872", angle = 90))+
+   geom_text(aes(6, 0.75, label = "Score : 0.12716", angle = 90))+
+   geom_text(aes(7, 0.75, label = "Score : 0.12437", angle = 90))+
+   geom_text(aes(8, 0.765, label = "Score : 0.12321 (best)", angle = 90))+
+   geom_text(aes(9, 0.75, label = "Score : 0.12485", angle = 90))
    
 ```
 
-The XGBM model is by far superior to the others and is only slightly improved when combined with Lasso, Ridge and Elastinet.
 
-The SVM model had a very high accuracy on our training set but performs poorly on the testing set. It appears that it is severely overfitting.
 
 
